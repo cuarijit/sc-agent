@@ -1,0 +1,5 @@
+CaliSnacks Supplier Lead Time Advisory
+
+CaliSnacks current standard lead time is 18 days with high variability due to port congestion and co-pack scheduling.
+Alternate supplier activation is recommended when projected stockout falls inside 14 days and forecast uplift exceeds 15 percent.
+Incoterm is EXW, so outbound coordination and pickup timing materially affect effective replenishment lead time.

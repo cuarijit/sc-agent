@@ -1,0 +1,5 @@
+HydraCo Critical Vendor Recovery Memo
+
+HydraCo critical hydration shipments currently operate on FOB Destination with standard lead time of 21 days.
+Service recovery actions should prioritize allocation and escalation when shortages are inside two weeks because no safe inbound acceleration is contractually guaranteed.
+Safety stock assumptions for critical hydration SKUs should be raised during hurricane or weather disruption periods.

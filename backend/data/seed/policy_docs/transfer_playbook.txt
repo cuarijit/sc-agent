@@ -1,0 +1,3 @@
+Transfers should be considered when another location has surplus above safety stock and transit time recovers service inside the required planning window.
+
+Transfer decisions should include freight cost, risk to the source location, and expected arrival date relative to the projected stockout week.

@@ -1,0 +1,5 @@
+Critical and seasonal SKUs must protect service targets when forecast variability rises or inbound reliability degrades.
+
+When shortage risk falls inside two weeks, expedite eligible purchase orders may be preferred over standard reorder if they recover service faster.
+
+Excess inventory positions should suppress new replenishment and may be rebalanced across the network before disposal or markdown discussion.

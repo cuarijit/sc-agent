@@ -1,0 +1,5 @@
+sku,location,parameter_code,parameter_name,inherited_from,effective_value,explicit_value,source_type,reason
+CHOC-001,DC-ATL,service_level,Target Service Level,GLOBAL > Seasonal > DC-ATL,95%,,default,Inherited seasonal policy for promotional items.
+CHOC-001,DC-ATL,safety_stock_qty,Safety Stock,GLOBAL > Seasonal > DC-ATL > CHOC-001,210,210,manual_override,Override applied after volatility increase in the last 8 weeks.
+BAR-002,DC-CHI,lead_time_days,External Lead Time,GLOBAL > Core > Midwest,9,,default,Inherited from Midwest core supplier rule.
+BAR-002,DC-CHI,reorder_point_qty,Reorder Point,GLOBAL > Core > DC-CHI > BAR-002,155,155,agent_recommendation,Previously approved recommendation based on forecast error uplift.

@@ -1,0 +1,8 @@
+code,name,location_type,region,city,state,echelon,description
+DC-ATL,Atlanta Distribution Center,DC,Southeast,Atlanta,GA,Primary DC,Southeast replenishment hub serving seasonal and critical volume.
+DC-CHI,Chicago Distribution Center,DC,Midwest,Chicago,IL,Primary DC,Midwest network node with surplus available for transfer scenarios.
+DC-DAL,Dallas Distribution Center,DC,South,Dallas,TX,Primary DC,Source location used in transfer playbook examples.
+DC-LAX,Los Angeles Distribution Center,DC,West,Los Angeles,CA,Primary DC,West coast DC exposed to supplier reliability and lead time volatility.
+DC-NJ,New Jersey Distribution Center,DC,Northeast,Newark,NJ,Primary DC,Northeast hub used for baseline reorder and cadence governance flows.
+STORE-DEN,Denver Flagship Store,Store,Mountain,Denver,CO,Store,High inventory retail node used for excess inventory management.
+DC-MIA,Miami Distribution Center,DC,Southeast,Miami,FL,Primary DC,Critical service node used for escalation and disruption scenarios.

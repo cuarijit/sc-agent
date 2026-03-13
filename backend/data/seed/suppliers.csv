@@ -1,0 +1,9 @@
+code,name,region,incoterm,reliability_score,lead_time_days,description
+SWEETSOURCE,SweetSource,Southeast,FOB Origin,0.93,14,Primary seasonal confection supplier with expedite support on open purchase orders.
+PEAKFOODS,PeakFoods,Midwest,CIF,0.96,10,Core bar supplier with stable service and strong network replenishment history.
+CALISNACKS,CaliSnacks,West,EXW,0.74,18,West region snack supplier currently showing reliability degradation and port risk.
+FRESHMINT,FreshMint,Northeast,DDP,0.95,12,Core gum supplier with predictable cadence and low inbound variance.
+MORNINGMILL,MorningMill,Mountain,CIF,0.89,16,Bulk cereal supplier used in excess and rebalance scenarios.
+HYDRACO,HydraCo,Southeast,FOB Destination,0.62,21,Critical hydration supplier with long lead time and disruption exposure.
+PACIFIC-COPACK,Pacific Co-Pack,West,EXW,0.91,11,Alternate co-pack vendor for regional snack recovery scenarios.
+NORTHPEAK,NorthPeak Co-Man,Midwest,FOB Origin,0.88,13,Alternate supplier used when transfer is less feasible than external sourcing.

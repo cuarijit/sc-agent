@@ -1,0 +1,20 @@
+#Node
+node_modules/
+frontend/node_modules/
+frntend/dist/
+frontend/release/
+backend/dist-electron/
+backend/build/
+backend/*.spec
+release/
+.DS_Store
+
+# Pythin
+__pycache__/
+*.pyc
+*.pyo
+.env/
+venv/
+backend/.venv/
+backend/__pycache__/
+build/

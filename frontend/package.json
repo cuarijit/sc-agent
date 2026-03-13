@@ -1,0 +1,78 @@
+{
+  "name": "meio-optimization-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "electron:dev": "node scripts/dev-electron.cjs",
+    "build:backend": "node scripts/build-backend.cjs",
+    "electron:dist:win": "node scripts/guard-platform.cjs win32 && npm run build && npm run build:backend && electron-builder --win nsis --x64",
+    "electron:dist:mac": "node scripts/guard-platform.cjs darwin && npm run build && npm run build:backend && electron-builder --mac dmg zip --x64 --arm64"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.2",
+    "@mui/material": "^7.3.2",
+    "@mui/x-data-grid": "^8.14.1",
+    "@tanstack/react-query": "^5.66.8",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.3.0",
+    "recharts": "^2.15.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.4",
+    "electron": "^36.2.1",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0"
+  },
+  "build": {
+    "appId": "com.zebra.meio.desktop",
+    "productName": "Zebra MEIO Desktop",
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist-electron/backend-api",
+        "to": "backend/backend-api"
+      },
+      {
+        "from": "../backend/data",
+        "to": "backend/data"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signAndEditExecutable": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

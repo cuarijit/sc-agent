@@ -1,0 +1,4 @@
+recommendation_id,sku,product_name,location,parameter_code,issue_type,current_effective_value,recommended_value,impact_summary,confidence_score,status
+PR-1001,SNACK-003,Savory Crunch Mix 12ct,DC-LAX,lead_time_days,missing,missing,12,Required to evaluate alternate supplier timing correctly.,0.92,open
+PR-1002,WATER-006,Electrolyte Water 6pk,DC-MIA,safety_stock_qty,misaligned,120,190,Raises coverage to match critical service policy under disruption.,0.90,open
+PR-1003,GUM-004,Mint Gum Multipack,DC-NJ,review_cadence_days,stale,21,14,Current review cadence is stale versus latest volatility classification.,0.84,accepted

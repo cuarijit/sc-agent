@@ -1,0 +1,7 @@
+sku,name,brand,category,abc_class,temperature_zone,primary_supplier,description
+CHOC-001,Chocolate Minis 52ct,Rocket Snacks,Seasonal,A,Ambient,SweetSource,High velocity seasonal chocolate assortment sold into club and promotional channels.
+BAR-002,Protein Bar Variety 24ct,Rocket Fuel,Core,A,Ambient,PeakFoods,Core multipack protein bar assortment used as a transfer and standard replenishment example.
+SNACK-003,Savory Crunch Mix 12ct,CrunchLab,Regional,B,Ambient,CaliSnacks,West region snack mix with supplier reliability disruption and alternate sourcing coverage.
+GUM-004,Mint Gum Multipack,FreshMint,Core,B,Ambient,FreshMint,Stable core gum multipack used for reorder and cadence governance examples.
+CEREAL-005,Granola Crunch Family Pack,Morning Mill,Bulk,C,Ambient,MorningMill,Slow moving family pack showing excess inventory and rebalance suppression logic.
+WATER-006,Electrolyte Water 6pk,HydraGo,Critical,A,Chilled,HydraCo,Critical hydration SKU demonstrating no-safe-action escalation and safety stock correction.

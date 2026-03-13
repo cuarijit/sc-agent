@@ -1,0 +1,5 @@
+Planning parameters inherit from the nearest valid parent scope until an explicit override is required.
+
+Missing, stale, invalid, and misaligned parameters must be surfaced in an exception workflow before planners approve any manual override.
+
+Safety stock changes must quantify expected service impact, inventory impact, and the reason the new value differs from the inherited policy.

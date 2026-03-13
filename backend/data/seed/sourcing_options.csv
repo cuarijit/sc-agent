@@ -1,0 +1,11 @@
+run_id,sku,location,option_type,supplier,from_location,recommended_qty,earliest_arrival_date,incremental_cost,risk_score,feasible_flag,rationale
+RUN-BASELINE-001,CHOC-001,DC-ATL,Expedite Open PO,SweetSource,,180,2026-03-17,1800,0.21,true,Best service recovery within the required horizon.
+RUN-BASELINE-001,CHOC-001,DC-ATL,Reorder,SweetSource,,220,2026-03-29,1100,0.44,true,Lower cost but misses the earliest shortage week.
+RUN-BASELINE-001,BAR-002,DC-CHI,Transfer,,DC-DAL,120,2026-03-15,620,0.18,true,Uses existing network surplus with minimal delay.
+RUN-BASELINE-001,BAR-002,DC-CHI,Alternate Supplier,NorthPeak Co-Man,,140,2026-03-24,980,0.31,true,Feasible but slower and more expensive than transfer.
+RUN-BASELINE-001,SNACK-003,DC-LAX,Alternate Supplier,Pacific Co-Pack,,150,2026-03-20,1540,0.28,true,Best balance of timing and supplier reliability under disruption.
+RUN-BASELINE-001,SNACK-003,DC-LAX,Reorder,CaliSnacks,,150,2026-03-31,910,0.52,true,Cheaper but violates service recovery target.
+RUN-BASELINE-001,GUM-004,DC-NJ,Reorder,FreshMint,,130,2026-03-26,740,0.24,true,Best cost adjusted replenishment inside the planning horizon.
+RUN-BASELINE-001,GUM-004,DC-NJ,Expedite Open PO,FreshMint,,130,2026-03-19,1450,0.20,true,Faster but not required based on current shortage timing.
+RUN-BASELINE-001,CEREAL-005,STORE-DEN,Hold / Rebalance,,STORE-DEN,220,2026-03-11,140,0.11,true,Reduces excess exposure without new inbound supply.
+RUN-BASELINE-001,WATER-006,DC-MIA,Reorder,HydraCo,,200,2026-03-30,980,0.76,false,Lead time misses the critical demand window.
