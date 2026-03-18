@@ -372,6 +372,23 @@ class NetworkAlert(BaseModel):
     effective_from: str
     effective_to: str | None = None
     recommended_action_json: str | None = None
+    linked_order_ids: list[str] = Field(default_factory=list)
+    linked_supply_nodes: list[str] = Field(default_factory=list)
+
+
+class DemoAlertRecord(NetworkAlert):
+    status: Literal["active", "archived"]
+    weeks_to_stockout: float | None = None
+
+
+class DemoAlertsResponse(BaseModel):
+    active: list[DemoAlertRecord]
+    archived: list[DemoAlertRecord]
+    summary: dict[str, float]
+
+
+class ProjectedInventoryAlertRecord(DemoAlertRecord):
+    match_source: Literal["direct", "expanded_scope"]
 
 
 class NetworkScenarioSummary(BaseModel):
@@ -488,6 +505,8 @@ class NetworkImpactedSkuRecord(BaseModel):
 class ReplenishmentOrderRecord(BaseModel):
     order_id: str
     alert_id: str
+    alert_ids: list[str] = Field(default_factory=list)
+    fixed_alert_ids: list[str] = Field(default_factory=list)
     order_type: str
     status: str
     is_exception: bool
@@ -512,6 +531,11 @@ class ReplenishmentOrderRecord(BaseModel):
 
 
 class ReplenishmentOrdersResponse(BaseModel):
+    rows: list[ReplenishmentOrderRecord]
+    summary: dict[str, float]
+
+
+class DemoOrdersResponse(BaseModel):
     rows: list[ReplenishmentOrderRecord]
     summary: dict[str, float]
 
@@ -572,6 +596,17 @@ class ReplenishmentOrderUpdateRequest(BaseModel):
     order_qty: float | None = None
     eta: str | None = None
     details: list[ReplenishmentOrderDetailInput] | None = None
+    alert_id: str | None = None
+    mark_alert_fixed: bool | None = None
+    fixed_alert_id: str | None = None
+    create_new_alert: bool | None = None
+    new_alert_id: str | None = None
+    new_alert_type: str | None = None
+    new_alert_severity: str | None = None
+    new_alert_title: str | None = None
+    new_alert_description: str | None = None
+    new_alert_impacted_node_id: str | None = None
+    new_alert_issue_type: str | None = None
 
 
 class ReplenishmentOrderMutationResponse(BaseModel):
@@ -707,3 +742,50 @@ class NetworkViewResponse(BaseModel):
     graph_nodes: list[NetworkViewGraphNode]
     graph_edges: list[NetworkViewGraphEdge]
     node_insights: list[NetworkViewNodeInsight]
+
+
+class AutonomousExecuteRequest(BaseModel):
+    enabled: bool = True
+    trigger: Literal["manual", "scheduled"] = "manual"
+    notes: str | None = None
+    initiated_by: str = "planner"
+    max_actions: int = 5
+
+
+class AutonomousActionRecord(BaseModel):
+    id: int
+    step_order: int
+    action_type: str
+    alert_id: str | None = None
+    sku: str | None = None
+    from_node: str | None = None
+    to_node: str | None = None
+    quantity: float
+    estimated_cost: float
+    estimated_lead_time_days: float
+    decision_rationale: str
+    status: str
+    executed_at: str
+
+
+class AutonomousRunRecord(BaseModel):
+    run_id: str
+    mode: str
+    status: str
+    started_at: str
+    completed_at: str | None = None
+    triggered_by: str
+    summary: dict[str, Any]
+    actions: list[AutonomousActionRecord]
+
+
+class AutonomousResponse(BaseModel):
+    enabled: bool
+    latest_run: AutonomousRunRecord | None = None
+    runs: list[AutonomousRunRecord] = Field(default_factory=list)
+
+
+class DemoResetResponse(BaseModel):
+    status: str
+    message: str
+    seeded: dict[str, int]

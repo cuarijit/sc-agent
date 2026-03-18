@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from .database import SessionLocal
 from .schemas import (
+    AutonomousExecuteRequest,
+    AutonomousResponse,
     ChatbotFeedbackRequest,
     ChatbotFeedbackResponse,
     ChatbotRequest,
@@ -16,6 +18,9 @@ from .schemas import (
     ChatRequest,
     ChatResponse,
     DashboardResponse,
+    DemoAlertsResponse,
+    DemoOrdersResponse,
+    DemoResetResponse,
     DocumentSearchResponse,
     FilterState,
     LlmConnectionTestRequest,
@@ -46,6 +51,7 @@ from .schemas import (
     ReplenishmentOrderUpdateRequest,
     ReplenishmentOrderMutationResponse,
     InventoryProjectionResponse,
+    ProjectedInventoryAlertRecord,
     InventorySimulationSaveRequest,
     InventorySimulationSaveResponse,
     ScenarioRequest,
@@ -118,6 +124,122 @@ def get_chatbot_service() -> ChatbotService:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "date": "2026-03-08"}
+
+
+@app.get("/alerts", response_model=DemoAlertsResponse)
+def demo_alerts(service: NetworkService = Depends(get_network_service)) -> dict[str, object]:
+    return service.get_demo_alerts()
+
+
+@app.get("/orders", response_model=DemoOrdersResponse)
+def demo_orders(
+    region: list[str] | None = Query(default=None),
+    location: list[str] | None = Query(default=None),
+    sku: list[str] | None = Query(default=None),
+    alert_id: list[str] | None = Query(default=None),
+    order_id: list[str] | None = Query(default=None),
+    order_type: list[str] | None = Query(default=None),
+    status: list[str] | None = Query(default=None),
+    exception_reason: list[str] | None = Query(default=None),
+    ship_from_node_id: list[str] | None = Query(default=None),
+    ship_to_node_id: list[str] | None = Query(default=None),
+    exception_only: bool = False,
+    service: PlanningService = Depends(get_service),
+) -> dict[str, object]:
+    filters = FilterState(
+        region=region,
+        location=location,
+        sku=sku,
+        alert_id=alert_id,
+        order_id=order_id,
+        order_type=order_type,
+        status=status,
+        exception_reason=exception_reason,
+        ship_from_node_id=ship_from_node_id,
+        ship_to_node_id=ship_to_node_id,
+    )
+    return service.get_replenishment_orders(filters.model_dump(), exception_only=exception_only)
+
+
+@app.post("/orders", response_model=ReplenishmentOrderMutationResponse)
+def demo_create_order(
+    payload: ReplenishmentOrderCreateRequest,
+    service: PlanningService = Depends(get_service),
+) -> dict[str, object]:
+    try:
+        return service.create_replenishment_order(payload.model_dump())
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.patch("/orders/{order_id}", response_model=ReplenishmentOrderMutationResponse)
+def demo_update_order(
+    order_id: str,
+    payload: ReplenishmentOrderUpdateRequest,
+    service: PlanningService = Depends(get_service),
+) -> dict[str, object]:
+    try:
+        return service.update_replenishment_order(order_id, payload.model_dump(exclude_none=True))
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
+@app.get("/projected-inventory", response_model=InventoryProjectionResponse)
+def demo_projected_inventory(
+    sku: str = Query(...),
+    location: str | None = None,
+    scenario_id: str | None = None,
+    service: InventoryProjectionService = Depends(get_inventory_projection_service),
+) -> dict[str, object]:
+    try:
+        return service.get_projection(sku=sku, location=location, scenario_id=scenario_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/projected-inventory/alerts", response_model=list[ProjectedInventoryAlertRecord])
+def projected_inventory_alerts(
+    sku: str = Query(...),
+    location: str = Query(...),
+    include_archived: bool = False,
+    match_scope: str = Query("all"),
+    service: NetworkService = Depends(get_network_service),
+) -> list[dict[str, object]]:
+    return service.get_alerts_for_sku_node(
+        sku=sku,
+        node=location,
+        include_archived=include_archived,
+        match_scope=match_scope,
+    )
+
+
+@app.post("/agent", response_model=NetworkAgentResponse)
+def demo_agent(
+    payload: NetworkAgentRequest,
+    service: NetworkService = Depends(get_network_service),
+) -> dict[str, object]:
+    return service.analyze_network_question(payload.model_dump())
+
+
+@app.post("/autonomous", response_model=AutonomousResponse)
+def run_autonomous(
+    payload: AutonomousExecuteRequest,
+    service: NetworkService = Depends(get_network_service),
+) -> dict[str, object]:
+    return service.execute_autonomous(payload.model_dump())
+
+
+@app.get("/autonomous", response_model=AutonomousResponse)
+def get_autonomous(service: NetworkService = Depends(get_network_service)) -> dict[str, object]:
+    return service.get_autonomous_runs(enabled=True)
+
+
+@app.post("/demo/reset", response_model=DemoResetResponse)
+def demo_reset(db: Session = Depends(get_db_session)) -> dict[str, object]:
+    stats = reset_and_seed(db)
+    return {"status": "ok", "message": "Demo data reset to baseline seed.", "seeded": stats}
 
 
 @app.post("/api/runs/plan")
@@ -495,6 +617,22 @@ def inventory_projection(
         return service.get_projection(sku=sku, location=location, scenario_id=scenario_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.get("/api/inventory-projection-alerts", response_model=list[ProjectedInventoryAlertRecord])
+def api_inventory_projection_alerts(
+    sku: str = Query(...),
+    location: str = Query(...),
+    include_archived: bool = False,
+    match_scope: str = Query("all"),
+    service: NetworkService = Depends(get_network_service),
+) -> list[dict[str, object]]:
+    return service.get_alerts_for_sku_node(
+        sku=sku,
+        node=location,
+        include_archived=include_archived,
+        match_scope=match_scope,
+    )
 
 
 @app.post("/api/simulation/save", response_model=InventorySimulationSaveResponse)

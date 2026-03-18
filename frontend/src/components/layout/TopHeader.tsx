@@ -1,8 +1,10 @@
 import AppsOutlinedIcon from "@mui/icons-material/AppsOutlined";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
+import RestartAltOutlinedIcon from "@mui/icons-material/RestartAltOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
-import { Avatar, IconButton, Paper, Stack, Typography } from "@mui/material";
+import { Avatar, Button, IconButton, Paper, Stack, Typography } from "@mui/material";
 import { useLocation } from "react-router-dom";
 import { NAV_MODULES } from "../../app/navigation";
 
@@ -11,11 +13,17 @@ export default function TopHeader({
   collapsed,
   onToggleThemeMode,
   onOpenSettings,
+  onOpenInformation,
+  onResetDemo,
+  resetInProgress,
 }: {
   themeMode: "light" | "dark";
   collapsed: boolean;
   onToggleThemeMode: () => void;
   onOpenSettings: () => void;
+  onOpenInformation: () => void;
+  onResetDemo: () => void;
+  resetInProgress: boolean;
 }) {
   const location = useLocation();
   const pageTitle = location.pathname.startsWith("/recommendations")
@@ -56,6 +64,24 @@ export default function TopHeader({
           </Typography>
         </Stack>
         <Stack direction="row" alignItems="center" spacing={0.8}>
+          <Button
+            size="small"
+            variant="outlined"
+            color="inherit"
+            startIcon={<RestartAltOutlinedIcon fontSize="small" />}
+            onClick={onResetDemo}
+            disabled={resetInProgress}
+            sx={{
+              borderColor: "rgba(255,255,255,0.35)",
+              color: "rgba(255,255,255,0.92)",
+              "&:hover": { borderColor: "rgba(255,255,255,0.62)" },
+            }}
+          >
+            {resetInProgress ? "Resetting..." : "Reset Demo"}
+          </Button>
+          <IconButton size="small" onClick={onOpenInformation} aria-label="Information" sx={{ color: "rgba(255,255,255,0.86)" }}>
+            <InfoOutlinedIcon fontSize="small" />
+          </IconButton>
           <IconButton size="small" onClick={onOpenSettings} aria-label="Settings" sx={{ color: "rgba(255,255,255,0.86)" }}>
             <SettingsOutlinedIcon fontSize="small" />
           </IconButton>

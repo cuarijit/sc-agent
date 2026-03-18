@@ -4,9 +4,12 @@ import json
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import and_
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from ..models import (
+    AutonomousAction,
+    AutonomousRun,
     NetworkAgentResult,
     NetworkAlert,
     NetworkActualWeekly,
@@ -24,6 +27,8 @@ from ..models import (
     NetworkSourcingRule,
     ProductMaster,
     ReplenishmentOrder,
+    ReplenishmentOrderAlertLink,
+    ReplenishmentOrderDetail,
 )
 from .llm_service import resolve_llm_selection
 
@@ -38,6 +43,62 @@ def _ts(offset_minutes: int = 0) -> str:
 class NetworkService:
     def __init__(self, db: Session) -> None:
         self.db = db
+        self._ensure_order_alert_link_table()
+
+    def _ensure_order_alert_link_table(self) -> None:
+        bind = self.db.get_bind()
+        ReplenishmentOrderAlertLink.__table__.create(bind=bind, checkfirst=True)
+        existing = {
+            (str(item.order_id), str(item.alert_id))
+            for item in self.db.query(ReplenishmentOrderAlertLink.order_id, ReplenishmentOrderAlertLink.alert_id).all()
+        }
+        created = False
+        now_iso = datetime.utcnow().replace(microsecond=0).isoformat()
+        for order_id, alert_id, ship_to in self.db.query(
+            ReplenishmentOrder.order_id,
+            ReplenishmentOrder.alert_id,
+            ReplenishmentOrder.ship_to_node_id,
+        ).all():
+            oid = str(order_id or "").strip()
+            aid = str(alert_id or "").strip()
+            if not oid or not aid or (oid, aid) in existing:
+                continue
+            self.db.add(
+                ReplenishmentOrderAlertLink(
+                    order_id=oid,
+                    alert_id=aid,
+                    link_status="active",
+                    linked_scope="order",
+                    source_node_id=str(ship_to or "").strip() or None,
+                    created_at=now_iso,
+                )
+            )
+            existing.add((oid, aid))
+            created = True
+        if created:
+            self.db.flush()
+
+    def _next_autonomous_order_id(self) -> str:
+        max_suffix = 0
+        for (order_id,) in self.db.query(ReplenishmentOrder.order_id).all():
+            token = str(order_id or "").strip().upper()
+            if not token.startswith("AUTO-RO-"):
+                continue
+            suffix = token.replace("AUTO-RO-", "", 1)
+            if suffix.isdigit():
+                max_suffix = max(max_suffix, int(suffix))
+        return f"AUTO-RO-{max_suffix + 1:05d}"
+
+    def _next_autonomous_order_suffix(self) -> int:
+        max_suffix = 0
+        for (order_id,) in self.db.query(ReplenishmentOrder.order_id).all():
+            token = str(order_id or "").strip().upper()
+            if not token.startswith("AUTO-RO-"):
+                continue
+            suffix = token.replace("AUTO-RO-", "", 1)
+            if suffix.isdigit():
+                max_suffix = max(max_suffix, int(suffix))
+        return max_suffix + 1
 
     def _node_payload(self, row: NetworkNode) -> dict[str, object]:
         return {
@@ -80,6 +141,14 @@ class NetworkService:
         }
 
     def _alert_payload(self, row: NetworkAlert) -> dict[str, object]:
+        links = (
+            self.db.query(ReplenishmentOrderAlertLink)
+            .filter(ReplenishmentOrderAlertLink.alert_id == row.alert_id)
+            .order_by(ReplenishmentOrderAlertLink.created_at.asc(), ReplenishmentOrderAlertLink.id.asc())
+            .all()
+        )
+        linked_order_ids = sorted({str(item.order_id or "").strip() for item in links if str(item.order_id or "").strip()})
+        linked_supply_nodes = sorted({str(item.source_node_id or "").strip() for item in links if str(item.source_node_id or "").strip()})
         return {
             "alert_id": row.alert_id,
             "alert_type": row.alert_type,
@@ -92,6 +161,8 @@ class NetworkService:
             "effective_from": row.effective_from,
             "effective_to": row.effective_to,
             "recommended_action_json": row.recommended_action_json,
+            "linked_order_ids": linked_order_ids,
+            "linked_supply_nodes": linked_supply_nodes,
         }
 
     def _saved_scenarios(self) -> list[dict[str, object]]:
@@ -115,6 +186,308 @@ class NetworkService:
         value = str(values).strip()
         return [value] if value else []
 
+    @staticmethod
+    def _is_archived_alert(alert: NetworkAlert) -> bool:
+        if not alert.effective_to:
+            return False
+        try:
+            return datetime.fromisoformat(alert.effective_to).date() <= datetime.utcnow().date()
+        except ValueError:
+            return False
+
+    @staticmethod
+    def _is_orphan_alert(alert: NetworkAlert) -> bool:
+        return not str(alert.impacted_node_id or "").strip() and not str(alert.impacted_sku or "").strip()
+
+    def _archive_orphan_alerts(self) -> int:
+        today_iso = datetime.utcnow().date().isoformat()
+        changed = 0
+        for row in self.db.query(NetworkAlert).all():
+            if not self._is_orphan_alert(row):
+                continue
+            if self._is_archived_alert(row):
+                continue
+            row.effective_to = today_iso
+            changed += 1
+        if changed:
+            self.db.commit()
+        return changed
+
+    def _ensure_autonomous_tables(self) -> None:
+        bind = self.db.get_bind()
+        AutonomousRun.__table__.create(bind=bind, checkfirst=True)
+        AutonomousAction.__table__.create(bind=bind, checkfirst=True)
+
+    def _estimate_weeks_to_stockout(self, sku: str | None, node_id: str | None) -> float | None:
+        if not sku or not node_id:
+            return None
+        snapshots = (
+            self.db.query(NetworkInventorySnapshot)
+            .filter(NetworkInventorySnapshot.sku == sku, NetworkInventorySnapshot.node_id == node_id)
+            .order_by(NetworkInventorySnapshot.as_of_date.desc())
+            .all()
+        )
+        on_hand = float(snapshots[0].on_hand_qty) if snapshots else 0.0
+        demand_rows = (
+            self.db.query(NetworkDemandSignal)
+            .filter(NetworkDemandSignal.sku == sku, NetworkDemandSignal.dest_node_id == node_id)
+            .all()
+        )
+        if not demand_rows:
+            return None
+        avg_weekly_demand = sum(float(row.forecast_qty) for row in demand_rows) / max(len(demand_rows), 1)
+        if avg_weekly_demand <= 0:
+            return None
+        return round(on_hand / avg_weekly_demand, 2)
+
+    def get_demo_alerts(self) -> dict[str, object]:
+        self._archive_orphan_alerts()
+        alerts = self.db.query(NetworkAlert).order_by(NetworkAlert.effective_from.desc()).all()
+        active_rows: list[dict[str, object]] = []
+        archived_rows: list[dict[str, object]] = []
+        for row in alerts:
+            payload = self._alert_payload(row)
+            payload["weeks_to_stockout"] = self._estimate_weeks_to_stockout(row.impacted_sku, row.impacted_node_id)
+            if self._is_archived_alert(row):
+                payload["status"] = "archived"
+                archived_rows.append(payload)
+            else:
+                payload["status"] = "active"
+                active_rows.append(payload)
+        summary = {
+            "active_count": float(len(active_rows)),
+            "archived_count": float(len(archived_rows)),
+            "critical_active": float(sum(1 for row in active_rows if str(row["severity"]).lower() == "critical")),
+            "warning_active": float(sum(1 for row in active_rows if str(row["severity"]).lower() == "warning")),
+        }
+        return {"active": active_rows, "archived": archived_rows, "summary": summary}
+
+    def get_alerts_for_sku_node(
+        self,
+        sku: str,
+        node: str,
+        include_archived: bool = False,
+        match_scope: str = "all",
+    ) -> list[dict[str, object]]:
+        sku_norm = sku.strip()
+        node_norm = node.strip()
+        if not sku_norm or not node_norm:
+            return []
+        match_scope_norm = str(match_scope or "all").strip().lower()
+        if match_scope_norm not in {"all", "direct", "expanded"}:
+            match_scope_norm = "all"
+        alerts = self.db.query(NetworkAlert).order_by(NetworkAlert.effective_from.desc()).all()
+        matched: list[dict[str, object]] = []
+        impacted_cache: dict[str, list[dict[str, object]]] = {}
+        for row in alerts:
+            archived = self._is_archived_alert(row)
+            if archived and not include_archived:
+                continue
+            direct_match = (
+                str(row.impacted_sku or "").strip() == sku_norm
+                and str(row.impacted_node_id or "").strip() == node_norm
+            )
+            expanded_match = False
+            if match_scope_norm != "direct" and not direct_match:
+                if row.alert_id not in impacted_cache:
+                    impacted_cache[row.alert_id] = self.get_alert_impacted_skus(row.alert_id)
+                expanded_match = any(
+                    str(item.get("sku", "")).strip() == sku_norm
+                    and str(item.get("impacted_node_id", "")).strip() == node_norm
+                    for item in impacted_cache[row.alert_id]
+                )
+            is_match = direct_match if match_scope_norm == "direct" else expanded_match if match_scope_norm == "expanded" else (direct_match or expanded_match)
+            if not is_match:
+                continue
+            payload = self._alert_payload(row)
+            payload["weeks_to_stockout"] = self._estimate_weeks_to_stockout(sku_norm, node_norm)
+            payload["status"] = "archived" if archived else "active"
+            payload["match_source"] = "direct" if direct_match else "expanded_scope"
+            matched.append(payload)
+        return matched
+
+    def execute_autonomous(self, payload: dict[str, object]) -> dict[str, object]:
+        self._ensure_autonomous_tables()
+        enabled = bool(payload.get("enabled", True))
+        if not enabled:
+            return self.get_autonomous_runs(enabled=False)
+        max_actions = max(1, min(int(payload.get("max_actions", 5)), 20))
+        initiated_by = str(payload.get("initiated_by") or "planner")
+        trigger = str(payload.get("trigger") or "manual")
+        now_ts = _ts(self.db.query(AutonomousRun).count() + 1)
+        active_alerts = [
+            row
+            for row in self.db.query(NetworkAlert).order_by(NetworkAlert.effective_from.asc()).all()
+            if not self._is_archived_alert(row)
+        ]
+        priority_alerts = sorted(active_alerts, key=lambda row: (str(row.severity).lower() != "critical", row.alert_id))[:max_actions]
+        run_id = f"AUTO-RUN-{self.db.query(AutonomousRun).count() + 1:04d}"
+        run = AutonomousRun(
+            run_id=run_id,
+            mode="fully_autonomous",
+            status="completed",
+            started_at=now_ts,
+            completed_at=_ts(self.db.query(AutonomousRun).count() + 4),
+            triggered_by=initiated_by,
+            summary_json=json.dumps({}),
+        )
+        self.db.add(run)
+        action_rows: list[AutonomousAction] = []
+        total_cost = 0.0
+        total_qty = 0.0
+        next_order_suffix = self._next_autonomous_order_suffix()
+        for index, alert in enumerate(priority_alerts, start=1):
+            sku = alert.impacted_sku or "SKU-UNKNOWN"
+            to_node = alert.impacted_node_id or "NODE-UNKNOWN"
+            qty = 220.0 + (index * 35.0)
+            lead_time = 2.0 if str(alert.severity).lower() == "critical" else 4.0
+            unit_cost = 12.5 + (index * 0.9)
+            estimated_cost = round(qty * unit_cost, 2)
+            total_cost += estimated_cost
+            total_qty += qty
+            from_rule = (
+                self.db.query(NetworkSourcingRule)
+                .filter(NetworkSourcingRule.sku == sku, NetworkSourcingRule.dest_node_id == to_node)
+                .first()
+            )
+            from_node = from_rule.parent_location_node_id if from_rule else None
+            action = AutonomousAction(
+                run_id=run_id,
+                step_order=index,
+                action_type="neighbor_transfer",
+                alert_id=alert.alert_id,
+                sku=sku,
+                from_node=from_node,
+                to_node=to_node,
+                quantity=qty,
+                estimated_cost=estimated_cost,
+                estimated_lead_time_days=lead_time,
+                decision_rationale=(
+                    f"Detected {alert.severity} stock risk; auto-created STO covering ~{int(qty)} units "
+                    f"to protect service level above 95%."
+                ),
+                status="completed",
+                executed_at=_ts(self.db.query(AutonomousRun).count() + index + 4),
+            )
+            self.db.add(action)
+            action_rows.append(action)
+            order_id = f"AUTO-RO-{next_order_suffix:05d}"
+            next_order_suffix += 1
+            to_node_ref = self.db.query(NetworkNode).filter(NetworkNode.node_id == to_node).first()
+            eta_date = (datetime.utcnow().date() + timedelta(days=max(1, int(round(lead_time))))).isoformat()
+            created_ts = _ts(self.db.query(AutonomousRun).count() + index + 2)
+            fixed_ts = _ts(self.db.query(AutonomousRun).count() + index + 5)
+            self.db.add(
+                ReplenishmentOrder(
+                    order_id=order_id,
+                    alert_id=alert.alert_id,
+                    order_type="Autonomous Transfer",
+                    status="created",
+                    is_exception=False,
+                    exception_reason=None,
+                    alert_action_taken="autonomous_neighbor_transfer",
+                    order_created_by="autonomous-agent",
+                    ship_to_node_id=to_node,
+                    ship_from_node_id=from_node,
+                    sku=sku,
+                    product_count=1,
+                    order_qty=round(qty, 2),
+                    region=(to_node_ref.region if to_node_ref else None),
+                    order_cost=estimated_cost,
+                    lead_time_days=lead_time,
+                    delivery_delay_days=0.0,
+                    logistics_impact="autonomous_resolution",
+                    production_impact=None,
+                    transit_impact=None,
+                    update_possible=False,
+                    created_at=created_ts,
+                    eta=eta_date,
+                )
+            )
+            self.db.add(
+                ReplenishmentOrderDetail(
+                    order_id=order_id,
+                    sku=sku,
+                    ship_to_node_id=to_node,
+                    ship_from_node_id=from_node,
+                    order_qty=round(qty, 2),
+                )
+            )
+            self.db.add(
+                ReplenishmentOrderAlertLink(
+                    order_id=order_id,
+                    alert_id=alert.alert_id,
+                    link_status="fixed",
+                    linked_scope="order",
+                    source_node_id=to_node,
+                    issue_type="autonomous_resolution",
+                    notes=f"Resolved by autonomous run {run_id}",
+                    created_at=created_ts,
+                    fixed_at=fixed_ts,
+                    fixed_by="autonomous-agent",
+                )
+            )
+            # Archive alert after autonomous resolution for active/archive workbench split.
+            alert.effective_to = _ts(self.db.query(AutonomousRun).count() + index + 5)
+        run.summary_json = json.dumps(
+            {
+                "trigger": trigger,
+                "initiated_by": initiated_by,
+                "resolved_alerts": len(action_rows),
+                "actions_executed": len(action_rows),
+                "orders_created": len(action_rows),
+                "total_qty_moved": round(total_qty, 2),
+                "total_estimated_cost": round(total_cost, 2),
+            }
+        )
+        self.db.commit()
+        return self.get_autonomous_runs(enabled=True)
+
+    def get_autonomous_runs(self, enabled: bool = True) -> dict[str, object]:
+        try:
+            run_rows = self.db.query(AutonomousRun).order_by(AutonomousRun.started_at.desc()).limit(10).all()
+        except OperationalError:
+            self._ensure_autonomous_tables()
+            run_rows = self.db.query(AutonomousRun).order_by(AutonomousRun.started_at.desc()).limit(10).all()
+        runs: list[dict[str, object]] = []
+        for run in run_rows:
+            actions = (
+                self.db.query(AutonomousAction)
+                .filter(AutonomousAction.run_id == run.run_id)
+                .order_by(AutonomousAction.step_order.asc())
+                .all()
+            )
+            runs.append(
+                {
+                    "run_id": run.run_id,
+                    "mode": run.mode,
+                    "status": run.status,
+                    "started_at": run.started_at,
+                    "completed_at": run.completed_at,
+                    "triggered_by": run.triggered_by,
+                    "summary": json.loads(run.summary_json or "{}"),
+                    "actions": [
+                        {
+                            "id": action.id,
+                            "step_order": action.step_order,
+                            "action_type": action.action_type,
+                            "alert_id": action.alert_id,
+                            "sku": action.sku,
+                            "from_node": action.from_node,
+                            "to_node": action.to_node,
+                            "quantity": action.quantity,
+                            "estimated_cost": action.estimated_cost,
+                            "estimated_lead_time_days": action.estimated_lead_time_days,
+                            "decision_rationale": action.decision_rationale,
+                            "status": action.status,
+                            "executed_at": action.executed_at,
+                        }
+                        for action in actions
+                    ],
+                }
+            )
+        return {"enabled": enabled, "latest_run": runs[0] if runs else None, "runs": runs}
+
     def get_baseline_network(
         self,
         region: str | None = None,
@@ -124,6 +497,7 @@ class NetworkService:
         alert_type: str | list[str] | None = None,
         severity: str | list[str] | None = None,
     ) -> dict[str, object]:
+        self._archive_orphan_alerts()
         nodes_query = self.db.query(NetworkNode)
         if region:
             nodes_query = nodes_query.filter(NetworkNode.region == region)
@@ -537,7 +911,7 @@ class NetworkService:
             matched_sourcing = [
                 row
                 for row in all_sourcing
-                if row.dest_node_id == impacted_node_id or (row.parent_location_node_id or "") == impacted_node_id
+                if row.dest_node_id == impacted_node_id
             ]
         elif impacted_sku:
             matched_sourcing = [row for row in all_sourcing if row.sku == impacted_sku]
@@ -772,13 +1146,13 @@ def _match_sourcing_for_alert(alert: NetworkAlert, source_rows: list[NetworkSour
             row
             for row in source_rows
             if row.sku == alert.impacted_sku
-            and (row.dest_node_id == alert.impacted_node_id or (row.parent_location_node_id or "") == alert.impacted_node_id)
+            and row.dest_node_id == alert.impacted_node_id
         ]
     if alert.impacted_node_id:
         return [
             row
             for row in source_rows
-            if row.dest_node_id == alert.impacted_node_id or (row.parent_location_node_id or "") == alert.impacted_node_id
+            if row.dest_node_id == alert.impacted_node_id
         ]
     if alert.impacted_sku:
         return [row for row in source_rows if row.sku == alert.impacted_sku]

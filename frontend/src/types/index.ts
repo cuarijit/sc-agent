@@ -295,6 +295,8 @@ export interface NetworkAlert {
   effective_from: string;
   effective_to?: string | null;
   recommended_action_json?: string | null;
+  linked_order_ids?: string[];
+  linked_supply_nodes?: string[];
 }
 
 export interface NetworkScenarioSummary {
@@ -357,6 +359,51 @@ export interface NetworkAgentResponse {
   requires_user_approval: boolean;
   selected_llm_provider: string;
   selected_llm_model: string;
+}
+
+export interface DemoAlertsResponse {
+  active: Array<NetworkAlert & { status: "active"; weeks_to_stockout?: number | null }>;
+  archived: Array<NetworkAlert & { status: "archived"; weeks_to_stockout?: number | null }>;
+  summary: Record<string, number>;
+}
+
+export interface ProjectedInventoryAlertRecord extends NetworkAlert {
+  status: "active" | "archived";
+  weeks_to_stockout?: number | null;
+  match_source: "direct" | "expanded_scope";
+}
+
+export interface AutonomousActionRecord {
+  id: number;
+  step_order: number;
+  action_type: string;
+  alert_id?: string | null;
+  sku?: string | null;
+  from_node?: string | null;
+  to_node?: string | null;
+  quantity: number;
+  estimated_cost: number;
+  estimated_lead_time_days: number;
+  decision_rationale: string;
+  status: string;
+  executed_at: string;
+}
+
+export interface AutonomousRunRecord {
+  run_id: string;
+  mode: string;
+  status: string;
+  started_at: string;
+  completed_at?: string | null;
+  triggered_by: string;
+  summary: Record<string, unknown>;
+  actions: AutonomousActionRecord[];
+}
+
+export interface AutonomousResponse {
+  enabled: boolean;
+  latest_run?: AutonomousRunRecord | null;
+  runs: AutonomousRunRecord[];
 }
 
 export interface NetworkImpactedSkuRecord {
@@ -441,6 +488,8 @@ export interface NetworkViewResponse {
 export interface ReplenishmentOrderRecord {
   order_id: string;
   alert_id: string;
+  alert_ids?: string[];
+  fixed_alert_ids?: string[];
   order_type: string;
   status: string;
   is_exception: boolean;
@@ -525,6 +574,17 @@ export interface ReplenishmentOrderUpdateRequest {
   order_qty?: number;
   eta?: string;
   details?: ReplenishmentOrderDetailInput[];
+  alert_id?: string;
+  mark_alert_fixed?: boolean;
+  fixed_alert_id?: string;
+  create_new_alert?: boolean;
+  new_alert_id?: string;
+  new_alert_type?: string;
+  new_alert_severity?: string;
+  new_alert_title?: string;
+  new_alert_description?: string;
+  new_alert_impacted_node_id?: string;
+  new_alert_issue_type?: string;
 }
 
 export interface ReplenishmentOrderMutationResponse {

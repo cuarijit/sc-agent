@@ -1,6 +1,7 @@
 import FilterAltOutlinedIcon from "@mui/icons-material/FilterAltOutlined";
 import ErrorOutlineOutlinedIcon from "@mui/icons-material/ErrorOutlineOutlined";
 import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
+import HubOutlinedIcon from "@mui/icons-material/HubOutlined";
 import ReplayOutlinedIcon from "@mui/icons-material/ReplayOutlined";
 import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import {
@@ -42,12 +43,20 @@ import {
   fetchNetworkView,
   fetchParameterExceptions,
   fetchParameterValues,
+  fetchProjectedInventoryAlerts,
   saveInventorySimulation,
 } from "../../services/api";
-import type { InventoryProjectionWeek, NetworkViewResponse, ParameterException, ParameterValueRecord } from "../../types";
+import type {
+  InventoryProjectionWeek,
+  NetworkViewResponse,
+  ParameterException,
+  ParameterValueRecord,
+  ProjectedInventoryAlertRecord,
+} from "../../types";
 import FilterBuilderDialog from "../shared/FilterBuilderDialog";
 import SmartDataGrid from "../shared/SmartDataGrid";
 import { SectionCard } from "../shared/UiBits";
+import NetworkGraphModal from "../network/NetworkGraphModal";
 
 type ProjectionRow = InventoryProjectionWeek & { id: number };
 
@@ -115,6 +124,7 @@ export default function ProjectedInventoryWorkbench({
   const [scenarioId, setScenarioId] = useState<string>("");
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [networkGraphOpen, setNetworkGraphOpen] = useState(false);
   const [filterState, setFilterState] = useState<FilterState>(EMPTY_FILTER_STATE);
   const [edited, setEdited] = useState<Record<number, { forecast?: number; orders?: number }>>({});
   const [visibleWeeksCount, setVisibleWeeksCount] = useState<4 | 6 | 8 | 10 | 12>(12);
@@ -191,6 +201,11 @@ export default function ProjectedInventoryWorkbench({
       return fetchParameterExceptions(params);
     },
     enabled: Boolean(resolvedSku && resolvedNode),
+  });
+  const { data: projectionAlerts } = useQuery<ProjectedInventoryAlertRecord[]>({
+    queryKey: ["projected-inventory-alerts", resolvedSku, resolvedNode],
+    queryFn: () => fetchProjectedInventoryAlerts(resolvedSku, resolvedNode, { matchScope: "direct" }),
+    enabled: isSelectionReady,
   });
 
   const simulationMutation = useMutation({
@@ -513,6 +528,10 @@ export default function ProjectedInventoryWorkbench({
       },
     ];
   }, [data]);
+  const activeSelectionAlerts = useMemo(
+    () => (projectionAlerts ?? []).filter((alert) => alert.status === "active"),
+    [projectionAlerts],
+  );
 
   return (
     <Stack spacing={1}>
@@ -574,10 +593,51 @@ export default function ProjectedInventoryWorkbench({
       </SectionCard>
 
       <SectionCard title="Projection workbench" subtitle="Filter by SKU/node/product attributes, simulate, and evaluate projected inventory">
+        {isSelectionReady && activeSelectionAlerts.length > 0 ? (
+          <Box
+            sx={(theme) => ({
+              mb: 1,
+              p: 1,
+              borderRadius: 1,
+              border: `1px solid ${alpha(theme.palette.warning.main, 0.55)}`,
+              backgroundColor: alpha(theme.palette.warning.main, 0.12),
+            })}
+          >
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }} justifyContent="space-between">
+              <Tooltip title="Direct alerts only (exact SKU + Node match)">
+                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                  Active alerts for selected SKU + Node: {activeSelectionAlerts.length}
+                </Typography>
+              </Tooltip>
+              <Stack direction="row" spacing={0.7} sx={{ flexWrap: "wrap" }}>
+                {activeSelectionAlerts.map((alert) => (
+                  <Chip
+                    key={alert.alert_id}
+                    size="small"
+                    color={String(alert.severity).toLowerCase() === "critical" ? "error" : "warning"}
+                    label={`${alert.alert_id} (${alert.severity})`}
+                    onClick={() => navigate(`/network?alert_id=${encodeURIComponent(alert.alert_id)}`)}
+                  />
+                ))}
+              </Stack>
+            </Stack>
+          </Box>
+        ) : null}
         <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center", flexWrap: "wrap" }}>
           <Button variant="outlined" startIcon={<HelpOutlineOutlinedIcon />} onClick={() => setHelpOpen(true)}>
             Help
           </Button>
+          <Tooltip title={resolvedSku ? "Open SKU Network Graph" : "Select SKU to open network graph"}>
+            <span>
+              <IconButton
+                color="primary"
+                onClick={() => setNetworkGraphOpen(true)}
+                disabled={!resolvedSku}
+              >
+                <HubOutlinedIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
           <Tooltip title="Advanced Filter">
             <IconButton color="primary" onClick={() => setFilterDialogOpen(true)}>
               <FilterAltOutlinedIcon />
@@ -646,15 +706,15 @@ export default function ProjectedInventoryWorkbench({
                       <YAxis domain={[-10, "auto"]} allowDataOverflow />
                       <RechartsTooltip />
                       <Legend />
-                      <Bar dataKey="currentOnHand" name="Current On-Hand (Wk1)" fill="#475569" barSize={16} />
-                      <Bar dataKey="ordersNonException" name="Future Orders (Non-Exception)" stackId="orders" fill="#059669" barSize={16} />
-                      <Bar dataKey="ordersException" name="Future Orders (Exception)" stackId="orders" fill="#dc2626" barSize={16} />
-                      <Line type="monotone" dataKey="projectedActual" name="Projected Inventory Actual" stroke="#1d4ed8" strokeWidth={3} />
-                      <Line type="monotone" dataKey="projectedPlanned" name="Projected Inventory Planned" stroke="#2563eb" strokeWidth={2.5} strokeDasharray="6 4" />
-                      <Line type="monotone" dataKey="projectedScenario" name="Projected Inventory Scenario" stroke="#0f766e" strokeWidth={2.5} strokeDasharray="5 3" />
-                      <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#7c3aed" strokeWidth={2} />
-                      <Line type="monotone" dataKey="safety" name="Safety Stock" stroke="#f97316" strokeWidth={2} />
-                      <Line type="monotone" dataKey="rop" name="Re-Order Point" stroke="#dc2626" strokeWidth={2} strokeDasharray="6 4" />
+                      <Bar dataKey="currentOnHand" name="Current On-Hand (Wk1)" fill="#475569" barSize={16} isAnimationActive={false} />
+                      <Bar dataKey="ordersNonException" name="Future Orders (Non-Exception)" stackId="orders" fill="#059669" barSize={16} isAnimationActive={false} />
+                      <Bar dataKey="ordersException" name="Future Orders (Exception)" stackId="orders" fill="#dc2626" barSize={16} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="projectedActual" name="Projected Inventory Actual" stroke="#1d4ed8" strokeWidth={3} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="projectedPlanned" name="Projected Inventory Planned" stroke="#2563eb" strokeWidth={2.5} strokeDasharray="6 4" isAnimationActive={false} />
+                      <Line type="monotone" dataKey="projectedScenario" name="Projected Inventory Scenario" stroke="#0f766e" strokeWidth={2.5} strokeDasharray="5 3" isAnimationActive={false} />
+                      <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#7c3aed" strokeWidth={2} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="safety" name="Safety Stock" stroke="#f97316" strokeWidth={2} isAnimationActive={false} />
+                      <Line type="monotone" dataKey="rop" name="Re-Order Point" stroke="#dc2626" strokeWidth={2} strokeDasharray="6 4" isAnimationActive={false} />
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
@@ -737,12 +797,42 @@ export default function ProjectedInventoryWorkbench({
                         { field: "parameter_code", headerName: "Parameter", minWidth: 150, flex: 1.1 },
                         { field: "effective_value", headerName: "Value", minWidth: 90, flex: 0.7 },
                         { field: "recommended_value", headerName: "Recommended", minWidth: 110, flex: 0.8 },
-                        { field: "parameter_exception", headerName: "Exception", minWidth: 120, flex: 0.8 },
+                        {
+                          field: "parameter_exception",
+                          headerName: "Exception",
+                          minWidth: 140,
+                          flex: 0.9,
+                          renderCell: (params) => {
+                            const raw = String(params.value ?? "none").trim().toLowerCase();
+                            const label = raw === "none" ? "none" : raw.replace(/_/g, " ");
+                            return (
+                              <Chip
+                                size="small"
+                                label={label}
+                                color={raw === "none" ? "default" : "error"}
+                                variant={raw === "none" ? "outlined" : "filled"}
+                              />
+                            );
+                          },
+                        },
                       ] satisfies GridColDef[]}
                       disableRowSelectionOnClick
+                      getRowClassName={(params) =>
+                        String((params.row as { parameter_exception?: string }).parameter_exception || "").toLowerCase() !== "none"
+                          ? "parameter-exception-row"
+                          : ""
+                      }
                       hideFooter
                       loading={isFetchingParameters}
-                      sx={{ border: 0 }}
+                      sx={(theme) => ({
+                        border: 0,
+                        "& .parameter-exception-row": {
+                          backgroundColor: alpha(theme.palette.error.main, theme.palette.mode === "dark" ? 0.28 : 0.12),
+                        },
+                        "& .parameter-exception-row:hover": {
+                          backgroundColor: alpha(theme.palette.error.main, theme.palette.mode === "dark" ? 0.4 : 0.2),
+                        },
+                      })}
                     />
                   </div>
                 </Stack>
@@ -821,6 +911,16 @@ export default function ProjectedInventoryWorkbench({
           <Button onClick={() => setHelpOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
+      <NetworkGraphModal
+        open={networkGraphOpen}
+        onClose={() => setNetworkGraphOpen(false)}
+        sku={resolvedSku || null}
+        onOpenProjectedInventory={(skuValue, nodeId) => {
+          setSelectedSku(skuValue);
+          setSelectedNode(nodeId);
+          setNetworkGraphOpen(false);
+        }}
+      />
     </Stack>
   );
 }

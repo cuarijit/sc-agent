@@ -42,7 +42,7 @@ import { alpha } from "@mui/material/styles";
 import { type GridColDef, type GridRowId, type GridRowSelectionModel } from "@mui/x-data-grid";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useOutletContext, useSearchParams } from "react-router-dom";
+import { Link, useOutletContext, useSearchParams } from "react-router-dom";
 
 import type {
   MasterDataOptions,
@@ -78,6 +78,8 @@ import FilterBuilderDialog from "../components/shared/FilterBuilderDialog";
 import { EMPTY_FILTER_STATE, applyFilterState, type FilterFieldOption, type FilterState } from "../filtering";
 import InventoryDiagnosticAgent from "./InventoryDiagnosticAgent";
 import ProjectedInventoryWorkbench from "../components/inventory/ProjectedInventoryWorkbench";
+import NetworkGraphModal from "../components/network/NetworkGraphModal";
+import { resolveImpactedSkuForNetworkGraph } from "../app/networkGraphSku";
 
 const DEMO_SIMULATION: NetworkSimulationResponse = {
   scenario_id: "demo-scenario-001",
@@ -140,6 +142,7 @@ export default function NetworkPage() {
   const [impactedSkuFilterOpen, setImpactedSkuFilterOpen] = useState(false);
   const [impactedSkuFilterState, setImpactedSkuFilterState] = useState<FilterState>(EMPTY_FILTER_STATE);
   const [activeTab, setActiveTab] = useState(0);
+  const [alertLifecycleTab, setAlertLifecycleTab] = useState<"active" | "archived">("active");
   const [alertFilterOpen, setAlertFilterOpen] = useState(false);
   const [alertFilterState, setAlertFilterState] = useState<FilterState>(EMPTY_FILTER_STATE);
   const [selectedAlertIds, setSelectedAlertIds] = useState<GridRowId[]>([]);
@@ -199,10 +202,13 @@ export default function NetworkPage() {
   const [autonomousScheduleOpen, setAutonomousScheduleOpen] = useState(false);
   const [autonomousStartDate, setAutonomousStartDate] = useState("");
   const [autonomousEndDate, setAutonomousEndDate] = useState("");
+  const [autonomousNotes, setAutonomousNotes] = useState("Protect service levels for active critical alerts.");
   const [projectionModalOpen, setProjectionModalOpen] = useState(false);
   const [projectionSku, setProjectionSku] = useState("");
   const [projectionNode, setProjectionNode] = useState("");
   const [projectionSource, setProjectionSource] = useState("");
+  const [networkGraphModalOpen, setNetworkGraphModalOpen] = useState(false);
+  const [networkGraphSku, setNetworkGraphSku] = useState("");
   const filtersKey = globalFiltersKey(filters);
   const primaryLocation = firstFilterValue(filters.location);
 
@@ -211,6 +217,12 @@ export default function NetworkPage() {
     setProjectionNode(String(node ?? "").trim());
     setProjectionSource(source ?? "");
     setProjectionModalOpen(true);
+  }, []);
+  const openNetworkGraphModal = useCallback((sku?: string | null) => {
+    const nextSku = String(sku ?? "").trim();
+    if (!nextSku) return;
+    setNetworkGraphSku(nextSku);
+    setNetworkGraphModalOpen(true);
   }, []);
 
   useEffect(() => {
@@ -529,6 +541,20 @@ export default function NetworkPage() {
     }
     return map;
   }, [nodeAlertsByNodeId]);
+  const networkGridRows = useMemo(
+    () =>
+      (networkView?.rows ?? []).map((row) => {
+        const nodeId = String(row.node_id ?? "");
+        const alertCount = (nodeAlertsByNodeId.get(nodeId) ?? []).length;
+        const alertSeverity = alertCount > 0 ? (nodeAlertSeverityByNodeId.get(nodeId) ?? "info") : "";
+        return {
+          ...row,
+          alert_count: alertCount,
+          alert_severity: alertSeverity,
+        };
+      }),
+    [networkView?.rows, nodeAlertSeverityByNodeId, nodeAlertsByNodeId],
+  );
 
   const selectedNodeAlerts = useMemo(
     () => nodeAlertsByNodeId.get(selectedAlertNodeId) ?? [],
@@ -1044,16 +1070,6 @@ export default function NetworkPage() {
             const projectionSkuForNode = String(effectiveNetworkSku || nodeInsight?.sku || graphProductDetail?.sku || "").trim();
             const alertsForNode = nodeAlertsByNodeId.get(node.id) ?? [];
             const nodeSeverity = nodeAlertSeverityByNodeId.get(node.id) ?? "info";
-            const alertIconColor = nodeSeverity === "critical"
-              ? "error.main"
-              : nodeSeverity === "warning"
-                ? "warning.main"
-                : "grey.600";
-            const alertBorderColor = nodeSeverity === "critical"
-              ? "error.light"
-              : nodeSeverity === "warning"
-                ? "warning.light"
-                : "grey.400";
             return (
               <Fragment key={node.id}>
                 <Box
@@ -1081,33 +1097,20 @@ export default function NetworkPage() {
                       <IconButton
                         size={expanded ? "medium" : "small"}
                         color="primary"
-                        sx={{ border: "1px solid", borderColor: "primary.light", bgcolor: "rgba(59,130,246,0.10)", p: expanded ? 0.3 : undefined }}
+                        sx={{
+                          border: "1px solid",
+                          borderColor: "primary.light",
+                          bgcolor: "rgba(59,130,246,0.10)",
+                          p: expanded ? 0.3 : undefined,
+                          position: "relative",
+                        }}
                         onClick={(event) => {
                           event.stopPropagation();
                           openProjectionModal(projectionSkuForNode, node.id, "Network graph node");
                         }}
                       >
                         <Inventory2OutlinedIcon sx={{ fontSize: expanded ? 11 : 14 }} />
-                      </IconButton>
-                    </Tooltip>
-                    {hasAlert ? (
-                      <Tooltip title="View node alerts">
-                        <IconButton
-                          size={expanded ? "medium" : "small"}
-                          sx={{
-                            border: "1px solid",
-                            borderColor: alertBorderColor,
-                            bgcolor: "rgba(255,255,255,0.72)",
-                            position: "relative",
-                            p: expanded ? 0.3 : undefined,
-                          }}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setSelectedAlertNodeId(node.id);
-                            setNodeAlertsOpen(true);
-                          }}
-                        >
-                          <WarningAmberOutlinedIcon sx={{ fontSize: expanded ? 11 : 14, color: alertIconColor }} />
+                        {hasAlert ? (
                           <Box
                             component="span"
                             sx={{
@@ -1118,7 +1121,7 @@ export default function NetworkPage() {
                               height: expanded ? 11 : 13,
                               px: expanded ? 0.2 : 0.3,
                               borderRadius: 6,
-                              bgcolor: "rgba(15,23,42,0.9)",
+                              bgcolor: nodeSeverity === "critical" ? "error.main" : nodeSeverity === "warning" ? "warning.main" : "grey.600",
                               color: "#fff",
                               fontSize: expanded ? 7 : 9,
                               lineHeight: expanded ? "11px" : "13px",
@@ -1127,9 +1130,9 @@ export default function NetworkPage() {
                           >
                             {alertsForNode.length || 1}
                           </Box>
-                        </IconButton>
-                      </Tooltip>
-                    ) : null}
+                        ) : null}
+                      </IconButton>
+                    </Tooltip>
                   </Stack>
                 </Box>
               </Fragment>
@@ -1165,7 +1168,23 @@ export default function NetworkPage() {
     () => applyFilterState(impactedSkus ?? [], impactedSkuFields, impactedSkuFilterState),
     [impactedSkus, impactedSkuFields, impactedSkuFilterState],
   );
-  const alertRows = useMemo(() => (baseline?.alerts ?? []).map((item) => ({ id: item.alert_id, ...item })), [baseline?.alerts]);
+  const allAlertRows = useMemo(
+    () => (baseline?.alerts ?? []).map((item) => ({ id: item.alert_id, ...item })),
+    [baseline?.alerts],
+  );
+  const alertRows = useMemo(() => {
+    const today = new Date();
+    return allAlertRows
+      .filter((item) => {
+        const effectiveTo = String(item.effective_to ?? "").trim();
+        const archived = effectiveTo.length > 0 && !Number.isNaN(Date.parse(effectiveTo)) && new Date(effectiveTo) <= today;
+        return alertLifecycleTab === "active" ? !archived : archived;
+      })
+      .map((item) => ({
+        ...item,
+        status: alertLifecycleTab,
+      }));
+  }, [allAlertRows, alertLifecycleTab]);
   const alertFields = useMemo<FilterFieldOption[]>(
     () => [
       { key: "alert_id", label: "Alert ID", type: "text", suggestions: [...new Set(alertRows.map((item) => String(item.alert_id ?? "")))] },
@@ -1183,9 +1202,18 @@ export default function NetworkPage() {
     () => applyFilterState(alertRows, alertFields, alertFilterState),
     [alertRows, alertFields, alertFilterState],
   );
+  const activeAlertCount = useMemo(
+    () =>
+      allAlertRows.filter((item) => {
+        const effectiveTo = String(item.effective_to ?? "").trim();
+        return !(effectiveTo.length > 0 && !Number.isNaN(Date.parse(effectiveTo)) && new Date(effectiveTo) <= new Date());
+      }).length,
+    [allAlertRows],
+  );
+  const archivedAlertCount = useMemo(() => Math.max(allAlertRows.length - activeAlertCount, 0), [allAlertRows.length, activeAlertCount]);
   const alertIds = useMemo(
-    () => alertRows.map((item) => String(item.alert_id)),
-    [alertRows],
+    () => allAlertRows.map((item) => String(item.alert_id)),
+    [allAlertRows],
   );
   const alertImpactedQueries = useQueries({
     queries: alertIds.map((alertId) => ({
@@ -1397,49 +1425,92 @@ export default function NetworkPage() {
           );
         },
       },
+      {
+        field: "linked_order_ids",
+        headerName: "Fixed/Linked Orders",
+        minWidth: 190,
+        flex: 1.2,
+        sortable: false,
+        renderCell: (params) => {
+          const orderIds = Array.isArray(params.row.linked_order_ids) ? (params.row.linked_order_ids as string[]) : [];
+          if (!orderIds.length) return <Typography variant="caption" color="text.secondary">-</Typography>;
+          return (
+            <Stack direction="row" spacing={0.5} sx={{ flexWrap: "wrap", py: 0.25 }}>
+              {orderIds.slice(0, 3).map((orderId) => (
+                <Link key={`${params.row.alert_id}::${orderId}`} to={`/replenishment?tab=order-details&order_id=${encodeURIComponent(orderId)}`}>
+                  {orderId}
+                </Link>
+              ))}
+            </Stack>
+          );
+        },
+      },
       { field: "effective_from", headerName: "From", minWidth: 110, flex: 0.7 },
       { field: "effective_to", headerName: "To", minWidth: 110, flex: 0.7 },
       {
         field: "action",
         headerName: "Action",
-        minWidth: 150,
-        flex: 0.9,
+        minWidth: 190,
+        flex: 1,
         sortable: false,
         filterable: false,
-        renderCell: (params) => (
-          <Stack direction="row" spacing={0.5}>
-            <Tooltip title="View impacted SKUs">
-              <IconButton
-                size="small"
-                color="primary"
-                onClick={() => {
-                  setImpactedSkuAlertId(String(params.row.alert_id ?? ""));
-                  setImpactedSkuOpen(true);
-                }}
+        renderCell: (params) => {
+          const skuResolution = resolveImpactedSkuForNetworkGraph(params.row.impacted_sku);
+          return (
+            <Stack direction="row" spacing={0.5}>
+              <Tooltip title="View impacted SKUs">
+                <IconButton
+                  size="small"
+                  color="primary"
+                  onClick={() => {
+                    setImpactedSkuAlertId(String(params.row.alert_id ?? ""));
+                    setImpactedSkuOpen(true);
+                  }}
+                >
+                  <VisibilityOutlinedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="Open Projected Inventory Workbench">
+                <IconButton
+                  size="small"
+                  color="primary"
+                  onClick={() => {
+                    openProjectionModal(
+                      params.row.impacted_sku ? String(params.row.impacted_sku) : null,
+                      params.row.impacted_node_id ? String(params.row.impacted_node_id) : null,
+                      "Network Alert Workbench",
+                    );
+                  }}
+                >
+                  <Inventory2OutlinedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip
+                title={
+                  skuResolution.canOpenGraph
+                    ? "Open SKU Network Graph"
+                    : skuResolution.reason === "missing"
+                      ? "Network graph unavailable (missing impacted SKU)"
+                      : "Network graph unavailable (multiple impacted SKUs)"
+                }
               >
-                <VisibilityOutlinedIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Open Projected Inventory Workbench">
-              <IconButton
-                size="small"
-                color="primary"
-                onClick={() => {
-                  openProjectionModal(
-                    params.row.impacted_sku ? String(params.row.impacted_sku) : null,
-                    params.row.impacted_node_id ? String(params.row.impacted_node_id) : null,
-                    "Network Alert Workbench",
-                  );
-                }}
-              >
-                <Inventory2OutlinedIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-        ),
+                <span>
+                  <IconButton
+                    size="small"
+                    color="primary"
+                    disabled={!skuResolution.canOpenGraph}
+                    onClick={() => openNetworkGraphModal(skuResolution.sku)}
+                  >
+                    <HubOutlinedIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Stack>
+          );
+        },
       },
     ],
-    [openProjectionModal],
+    [openNetworkGraphModal, openProjectionModal],
   );
   const activeSeverityFilter = useMemo(() => {
     const severityCondition = alertFilterState.conditions.find((item) => item.column === "severity" && item.operator === "equals");
@@ -1659,6 +1730,17 @@ export default function NetworkPage() {
               ) : null}
             </SectionCard>
             <SectionCard title="Alerts workbench" subtitle="Filter, select, and run simulation from selected alerts">
+              <Tabs
+                value={alertLifecycleTab}
+                onChange={(_event, value) => {
+                  setAlertLifecycleTab(value);
+                  setSelectedAlertIds([]);
+                }}
+                sx={{ mb: 1 }}
+              >
+                <Tab value="active" label={`Active (${activeAlertCount})`} />
+                <Tab value="archived" label={`Archived (${archivedAlertCount})`} />
+              </Tabs>
               <Stack direction="row" spacing={1} sx={{ mb: 1, alignItems: "center", flexWrap: "wrap" }}>
                 <Button
                   variant="outlined"
@@ -1681,7 +1763,9 @@ export default function NetworkPage() {
                   Simulation
                 </Button>
                 <Typography variant="caption" color="text.secondary">
-                  {selectedAlertIds.length > 0 ? `${selectedAlertIds.length} alert(s) selected` : "Select one or more alerts to enable simulation"}
+                  {selectedAlertIds.length > 0
+                    ? `${selectedAlertIds.length} ${alertLifecycleTab} alert(s) selected`
+                    : `Select one or more ${alertLifecycleTab} alerts to enable simulation`}
                 </Typography>
               </Stack>
               <div className="maintenance-grid-shell">
@@ -1753,10 +1837,11 @@ export default function NetworkPage() {
             <SectionCard title="Network Data Grid" subtitle="SKU-node sourcing nerve center with forecast, actual, inventory, POS, and orders">
               <div className="maintenance-grid-shell">
                 <SmartDataGrid
-                  rows={networkView?.rows ?? []}
+                  rows={networkGridRows}
                   columns={[
                     { field: "sku", headerName: "SKU", minWidth: 110, flex: 0.8 },
                     { field: "node_id", headerName: "Node", minWidth: 130, flex: 0.9 },
+                    { field: "alert_count", headerName: "Number of Alerts", minWidth: 120, flex: 0.8, type: "number" },
                     { field: "source_node_id", headerName: "Source Node", minWidth: 130, flex: 0.9 },
                     { field: "sourcing_strategy", headerName: "Push/Pull", minWidth: 100, flex: 0.8 },
                     { field: "forecast_qty", headerName: "Forecast", minWidth: 100, flex: 0.8, type: "number" },
@@ -1806,10 +1891,19 @@ export default function NetworkPage() {
                       ),
                     },
                   ] satisfies GridColDef[]}
+                  getRowClassName={(params) => (String(params.row.alert_severity ?? "").toLowerCase() === "critical" ? "network-grid-critical-row" : "")}
                   disableRowSelectionOnClick
                   pageSizeOptions={[10, 25, 50, 100]}
                   initialState={{ pagination: { paginationModel: { pageSize: 25, page: 0 } } }}
-                  sx={{ border: 0 }}
+                  sx={(theme) => ({
+                    border: 0,
+                    "& .network-grid-critical-row": {
+                      backgroundColor: alpha(theme.palette.error.main, 0.1),
+                    },
+                    "& .network-grid-critical-row:hover": {
+                      backgroundColor: alpha(theme.palette.error.main, 0.16),
+                    },
+                  })}
                 />
               </div>
             </SectionCard>
@@ -1817,7 +1911,7 @@ export default function NetworkPage() {
               <SectionCard title="Network Graph" subtitle="Interactive flow map with node actions, alerts, and parameter drilldown.">
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                   <Typography variant="caption" color="text.secondary">
-                    Drag nodes to fine-tune layout. Use the inventory icon for projected inventory and the alert icon for node alerts.
+                    Drag nodes to fine-tune layout. Use the inventory icon (with alert count badge) to open projected inventory and review related alerts.
                   </Typography>
                   <Tooltip title="Expand graph">
                     <IconButton
@@ -2075,6 +2169,60 @@ export default function NetworkPage() {
                 { field: "actual_qty", headerName: "Actual", minWidth: 110, flex: 0.8, type: "number" },
                 { field: "volatility_index", headerName: "Volatility", minWidth: 100, flex: 0.8, type: "number" },
                 { field: "demand_class", headerName: "Demand Class", minWidth: 120, flex: 0.8 },
+                {
+                  field: "action",
+                  headerName: "Action",
+                  minWidth: 130,
+                  flex: 0.9,
+                  sortable: false,
+                  filterable: false,
+                  renderCell: (params) => {
+                    const sku = String(params.row.sku ?? "").trim();
+                    const node = String(params.row.impacted_node_id ?? "").trim();
+                    const skuResolution = resolveImpactedSkuForNetworkGraph(sku);
+                    const canOpenProjection = Boolean(sku && node);
+                    return (
+                      <Stack direction="row" spacing={0.3}>
+                        <Tooltip
+                          title={
+                            canOpenProjection
+                              ? "Open Projected Inventory Workbench"
+                              : "Projected inventory unavailable (missing SKU or Node)"
+                          }
+                        >
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              disabled={!canOpenProjection}
+                              onClick={() => openProjectionModal(sku, node, "Impacted SKUs modal")}
+                            >
+                              <Inventory2OutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                        <Tooltip
+                          title={
+                            skuResolution.canOpenGraph
+                              ? "Open SKU Network Graph"
+                              : "Network graph unavailable (missing or invalid SKU)"
+                          }
+                        >
+                          <span>
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              disabled={!skuResolution.canOpenGraph}
+                              onClick={() => openNetworkGraphModal(skuResolution.sku)}
+                            >
+                              <HubOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      </Stack>
+                    );
+                  },
+                },
               ] satisfies GridColDef[]}
               disableRowSelectionOnClick
               pageSizeOptions={[10, 25, 50, 100]}
@@ -2178,6 +2326,15 @@ export default function NetworkPage() {
               inputProps={{ min: autonomousStartDate || new Date().toISOString().slice(0, 10) }}
               fullWidth
               size="small"
+            />
+            <TextField
+              label="Autonomous notes"
+              value={autonomousNotes}
+              onChange={(e) => setAutonomousNotes(e.target.value)}
+              fullWidth
+              size="small"
+              multiline
+              minRows={2}
             />
           </Stack>
         </DialogContent>
@@ -2341,21 +2498,31 @@ export default function NetworkPage() {
         </DialogActions>
       </Dialog>
 
-      <Dialog
+      <NetworkGraphModal
         open={graphExpandedOpen}
         onClose={() => setGraphExpandedOpen(false)}
-        fullWidth
-        maxWidth="xl"
-        slotProps={{ paper: { sx: { width: "96vw", maxWidth: "96vw", height: "92vh", display: "flex", flexDirection: "column" } } }}
-      >
-        <DialogTitle>Supply Chain Network Graph</DialogTitle>
-        <DialogContent dividers sx={{ p: 1.5, flex: 1, minHeight: 0, display: "flex" }}>
-          {renderNetworkCanvas(true)}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setGraphExpandedOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+        sku={networkFilterSku || null}
+        onOpenProjectedInventory={(skuValue, nodeId) =>
+          openProjectionModal(
+            skuValue,
+            nodeId,
+            "Supply Chain Network Graph - Network Tab",
+          )
+        }
+      />
+
+      <NetworkGraphModal
+        open={networkGraphModalOpen}
+        onClose={() => setNetworkGraphModalOpen(false)}
+        sku={networkGraphSku || null}
+        onOpenProjectedInventory={(skuValue, nodeId) =>
+          openProjectionModal(
+            skuValue,
+            nodeId,
+            "Supply Chain Network Graph - Alerts Workbench",
+          )
+        }
+      />
 
       <Dialog open={nodeAlertsOpen} onClose={() => setNodeAlertsOpen(false)} fullWidth maxWidth="md">
         <DialogTitle>Node Alerts {selectedAlertNodeId ? `- ${selectedAlertNodeId}` : ""}</DialogTitle>

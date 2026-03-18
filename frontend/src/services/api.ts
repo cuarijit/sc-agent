@@ -1,8 +1,10 @@
 import type {
+  AutonomousResponse,
   ChatbotRequest,
   ChatbotResponse,
   ChatResponse,
   DashboardResponse,
+  DemoAlertsResponse,
   EffectiveParameterValue,
   MasterDataOptions,
   MasterDataSearchResults,
@@ -17,6 +19,7 @@ import type {
   NetworkViewResponse,
   ParameterValueRecord,
   ParameterException,
+  ProjectedInventoryAlertRecord,
   ReplenishmentOrdersResponse,
   ReplenishmentOrderDetailsResponse,
   ReplenishmentOrderCreateRequest,
@@ -184,6 +187,42 @@ export function ingestDocuments(): Promise<Record<string, unknown>> {
 
 export function fetchNetworkBaseline(params: URLSearchParams): Promise<NetworkBaselineResponse> {
   return request(`/api/network/baseline?${params.toString()}`);
+}
+
+export function fetchDemoAlerts(): Promise<DemoAlertsResponse> {
+  return request("/alerts");
+}
+
+export function fetchProjectedInventoryAlerts(
+  sku: string,
+  location: string,
+  options?: { includeArchived?: boolean; matchScope?: "all" | "direct" | "expanded" },
+): Promise<ProjectedInventoryAlertRecord[]> {
+  const params = new URLSearchParams({ sku, location });
+  if (options?.includeArchived) params.set("include_archived", "true");
+  if (options?.matchScope) params.set("match_scope", options.matchScope);
+  return request(`/api/inventory-projection-alerts?${params.toString()}`);
+}
+
+export function runAutonomous(payload: {
+  enabled?: boolean;
+  trigger?: "manual" | "scheduled";
+  notes?: string;
+  initiated_by?: string;
+  max_actions?: number;
+}): Promise<AutonomousResponse> {
+  return request("/autonomous", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchAutonomousRuns(): Promise<AutonomousResponse> {
+  return request("/autonomous");
+}
+
+export function resetDemoData(): Promise<{ status: string; message: string; seeded: Record<string, number> }> {
+  return request("/demo/reset", { method: "POST" });
 }
 
 export function fetchNetworkOptions(): Promise<NetworkOptionsResponse> {

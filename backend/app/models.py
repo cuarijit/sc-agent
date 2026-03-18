@@ -434,6 +434,37 @@ class NetworkAgentResult(Base):
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class AutonomousRun(Base):
+    __tablename__ = "autonomous_runs"
+
+    run_id: Mapped[str] = mapped_column(String, primary_key=True)
+    mode: Mapped[str] = mapped_column(String, default="full_autonomous", index=True)
+    status: Mapped[str] = mapped_column(String, default="completed", index=True)
+    started_at: Mapped[str] = mapped_column(String, index=True)
+    completed_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    triggered_by: Mapped[str] = mapped_column(String, default="planner", index=True)
+    summary_json: Mapped[str] = mapped_column(Text)
+
+
+class AutonomousAction(Base):
+    __tablename__ = "autonomous_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("autonomous_runs.run_id"), index=True)
+    step_order: Mapped[int] = mapped_column(Integer, default=1)
+    action_type: Mapped[str] = mapped_column(String, index=True)
+    alert_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    sku: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    from_node: Mapped[str | None] = mapped_column(String, nullable=True)
+    to_node: Mapped[str | None] = mapped_column(String, nullable=True)
+    quantity: Mapped[float] = mapped_column(Float, default=0.0)
+    estimated_cost: Mapped[float] = mapped_column(Float, default=0.0)
+    estimated_lead_time_days: Mapped[float] = mapped_column(Float, default=0.0)
+    decision_rationale: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String, default="completed", index=True)
+    executed_at: Mapped[str] = mapped_column(String, index=True)
+
+
 class ReplenishmentOrder(Base):
     __tablename__ = "replenishment_orders"
 
@@ -471,6 +502,22 @@ class ReplenishmentOrderDetail(Base):
     ship_to_node_id: Mapped[str] = mapped_column(String, index=True)
     ship_from_node_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     order_qty: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class ReplenishmentOrderAlertLink(Base):
+    __tablename__ = "replenishment_order_alert_links"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    order_id: Mapped[str] = mapped_column(ForeignKey("replenishment_orders.order_id"), index=True)
+    alert_id: Mapped[str] = mapped_column(String, index=True)
+    link_status: Mapped[str] = mapped_column(String, default="active", index=True)  # active | fixed
+    linked_scope: Mapped[str] = mapped_column(String, default="order")  # order | supply_node
+    source_node_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    issue_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    fixed_at: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    fixed_by: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class Document(Base):

@@ -8,7 +8,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, selectinload
 
-from ..models import AuditLog, LocationMaster, NetworkAlert, NetworkNode, NetworkSourcingRule, ParameterException, ParameterValue, PlanningRun, ProjectionPoint, ProductMaster, Recommendation, ReplenishmentOrder, ReplenishmentOrderDetail, SupplierMaster, SourcingOption
+from ..models import AuditLog, LocationMaster, NetworkAlert, NetworkNode, NetworkSourcingRule, ParameterException, ParameterValue, PlanningRun, ProjectionPoint, ProductMaster, Recommendation, ReplenishmentOrder, ReplenishmentOrderAlertLink, ReplenishmentOrderDetail, SupplierMaster, SourcingOption
 from .llm_service import resolve_llm_selection
 from .rag_service import retrieve_policy_context
 
@@ -23,6 +23,7 @@ def _iso_for_week(week_index: int) -> str:
 class PlanningService:
     def __init__(self, db: Session) -> None:
         self.db = db
+        self._ensure_order_alert_link_table()
 
     @staticmethod
     def _list_filter_values(value: Any) -> list[str]:
@@ -40,6 +41,100 @@ class PlanningService:
         if len(values) == 1:
             return query.filter(column == values[0])
         return query.filter(column.in_(values))
+
+    def _ensure_order_alert_link_table(self) -> None:
+        bind = self.db.get_bind()
+        ReplenishmentOrderAlertLink.__table__.create(bind=bind, checkfirst=True)
+        existing = {
+            (str(item.order_id), str(item.alert_id))
+            for item in self.db.query(ReplenishmentOrderAlertLink.order_id, ReplenishmentOrderAlertLink.alert_id).all()
+        }
+        created = False
+        now_iso = datetime.utcnow().replace(microsecond=0).isoformat()
+        for order_id, alert_id in self.db.query(ReplenishmentOrder.order_id, ReplenishmentOrder.alert_id).all():
+            oid = str(order_id or "").strip()
+            aid = str(alert_id or "").strip()
+            if not oid or not aid or (oid, aid) in existing:
+                continue
+            self.db.add(
+                ReplenishmentOrderAlertLink(
+                    order_id=oid,
+                    alert_id=aid,
+                    link_status="active",
+                    linked_scope="order",
+                    created_at=now_iso,
+                )
+            )
+            existing.add((oid, aid))
+            created = True
+        if created:
+            self.db.flush()
+
+    def _order_alert_links_by_order_id(self, order_ids: list[str]) -> dict[str, dict[str, list[str]]]:
+        if not order_ids:
+            return {}
+        links = (
+            self.db.query(ReplenishmentOrderAlertLink)
+            .filter(ReplenishmentOrderAlertLink.order_id.in_(order_ids))
+            .order_by(ReplenishmentOrderAlertLink.created_at.asc(), ReplenishmentOrderAlertLink.id.asc())
+            .all()
+        )
+        result: dict[str, dict[str, list[str]]] = {order_id: {"active": [], "fixed": []} for order_id in order_ids}
+        for item in links:
+            status_key = "fixed" if str(item.link_status or "").strip().lower() == "fixed" else "active"
+            bucket = result.setdefault(item.order_id, {"active": [], "fixed": []})
+            if item.alert_id not in bucket[status_key]:
+                bucket[status_key].append(item.alert_id)
+        return result
+
+    def _normalize_order_alert_links(self, order_id: str) -> None:
+        rows = (
+            self.db.query(ReplenishmentOrderAlertLink)
+            .filter(ReplenishmentOrderAlertLink.order_id == order_id)
+            .order_by(ReplenishmentOrderAlertLink.created_at.desc(), ReplenishmentOrderAlertLink.id.desc())
+            .all()
+        )
+        if not rows:
+            return
+        keep_ids: set[int] = set()
+        grouped: dict[str, list[ReplenishmentOrderAlertLink]] = {}
+        for row in rows:
+            key = str(row.alert_id or "").strip().lower()
+            if not key:
+                continue
+            grouped.setdefault(key, []).append(row)
+        for _, items in grouped.items():
+            active = [item for item in items if str(item.link_status or "").strip().lower() == "active"]
+            keep = active[0] if active else items[0]
+            keep_ids.add(int(keep.id))
+        for row in rows:
+            if int(row.id) not in keep_ids:
+                self.db.delete(row)
+
+    def _sync_alert_archive_state(self, alert_id: str) -> None:
+        target = str(alert_id or "").strip()
+        if not target:
+            return
+        # Session autoflush is disabled; flush pending link-status updates so
+        # archive decisions are based on the latest active/fixed state.
+        self.db.flush()
+        alert = self.db.query(NetworkAlert).filter(NetworkAlert.alert_id == target).first()
+        if not alert:
+            return
+        active_link_count = (
+            self.db.query(ReplenishmentOrderAlertLink)
+            .filter(
+                ReplenishmentOrderAlertLink.alert_id == target,
+                ReplenishmentOrderAlertLink.link_status == "active",
+            )
+            .count()
+        )
+        if active_link_count > 0:
+            # Keep globally active while at least one order still references it.
+            alert.effective_to = None
+        else:
+            if not alert.effective_to:
+                alert.effective_to = datetime.utcnow().replace(microsecond=0).isoformat()
 
     def _apply_location_alias_filter(self, query: Any, columns: list[Any], value: Any):
         values = self._list_filter_values(value)
@@ -759,12 +854,22 @@ class PlanningService:
         row: ReplenishmentOrder,
         detail_counts: dict[str, int],
         detail_qtys: dict[str, float],
+        alert_links: dict[str, dict[str, list[str]]],
     ) -> dict[str, object]:
         product_count = int(detail_counts.get(row.order_id, row.product_count))
         order_qty = float(detail_qtys.get(row.order_id, row.order_qty))
+        link_bucket = alert_links.get(row.order_id, {})
+        active_alert_ids = list(link_bucket.get("active", []))
+        fixed_alert_ids = list(link_bucket.get("fixed", []))
+        # If we have link records and no active links, treat alert as removed from
+        # the order even if legacy row.alert_id still contains a historical value.
+        has_link_records = bool(active_alert_ids or fixed_alert_ids)
+        primary_alert_id = active_alert_ids[0] if active_alert_ids else ("" if has_link_records else str(row.alert_id or ""))
         return {
             "order_id": row.order_id,
-            "alert_id": row.alert_id,
+            "alert_id": primary_alert_id,
+            "alert_ids": active_alert_ids,
+            "fixed_alert_ids": fixed_alert_ids,
             "order_type": row.order_type,
             "status": row.status,
             "is_exception": row.is_exception,
@@ -797,7 +902,16 @@ class PlanningService:
             .all()
         )
         current_qty = round(sum(float(item.order_qty or 0.0) for item in current_rows), 2)
-        current_unique = len({item.sku for item in current_rows})
+        current_unique = len(
+            {
+                (
+                    str(item.sku or "").strip(),
+                    str(item.ship_to_node_id or "").strip(),
+                    str(item.ship_from_node_id or "").strip(),
+                )
+                for item in current_rows
+            }
+        )
         if (
             len(current_rows) == required_count
             and abs(current_qty - target_qty) <= 0.01
@@ -875,7 +989,20 @@ class PlanningService:
             [ReplenishmentOrder.ship_to_node_id, ReplenishmentOrder.ship_from_node_id],
             filters.get("location"),
         )
-        query = self._apply_filter(query, ReplenishmentOrder.alert_id, filters.get("alert_id"))
+        alert_filter_values = self._list_filter_values(filters.get("alert_id"))
+        if alert_filter_values:
+            matching_order_ids = {
+                row.order_id
+                for row in self.db.query(ReplenishmentOrderAlertLink)
+                .filter(
+                    ReplenishmentOrderAlertLink.link_status == "active",
+                    ReplenishmentOrderAlertLink.alert_id.in_(alert_filter_values),
+                )
+                .all()
+            }
+            if not matching_order_ids:
+                return {"rows": [], "summary": empty_summary}
+            query = query.filter(ReplenishmentOrder.order_id.in_(matching_order_ids))
         query = self._apply_filter(query, ReplenishmentOrder.order_id, filters.get("order_id"))
         query = self._apply_filter(query, ReplenishmentOrder.order_type, filters.get("order_type"))
         query = self._apply_filter(query, ReplenishmentOrder.status, filters.get("status"))
@@ -943,8 +1070,9 @@ class PlanningService:
             "avg_lead_time_days": round((lead_time_sum / total_count), 3) if total_count else 0.0,
             "avg_delivery_delay_days": round((delay_sum / total_count), 3) if total_count else 0.0,
         }
+        alert_links = self._order_alert_links_by_order_id(order_ids)
         return {
-            "rows": [self._replenishment_payload(row, detail_counts, detail_qtys) for row in rows],
+            "rows": [self._replenishment_payload(row, detail_counts, detail_qtys, alert_links) for row in rows],
             "summary": summary,
         }
 
@@ -957,6 +1085,20 @@ class PlanningService:
         payload_rows: list[dict[str, object]] = []
         order_id_values = self._list_filter_values(order_id if order_id is not None else filters.get("order_id"))
         primary_order_id = order_id_values[0] if order_id_values else None
+        alert_filter_values = self._list_filter_values(filters.get("alert_id"))
+        alert_filtered_order_ids: set[str] | None = None
+        if alert_filter_values:
+            alert_filtered_order_ids = {
+                item.order_id
+                for item in self.db.query(ReplenishmentOrderAlertLink)
+                .filter(
+                    ReplenishmentOrderAlertLink.link_status == "active",
+                    ReplenishmentOrderAlertLink.alert_id.in_(alert_filter_values),
+                )
+                .all()
+            }
+            if not alert_filtered_order_ids:
+                return {"rows": [], "summary": {"total_rows": 0.0, "total_order_qty": 0.0, "total_orders": 0.0}}
         try:
             if primary_order_id:
                 target = self.db.query(ReplenishmentOrder).filter(ReplenishmentOrder.order_id == primary_order_id).first()
@@ -967,7 +1109,8 @@ class PlanningService:
                 ReplenishmentOrder.order_id == ReplenishmentOrderDetail.order_id,
             )
             query = self._apply_filter(query, ReplenishmentOrder.region, filters.get("region"))
-            query = self._apply_filter(query, ReplenishmentOrder.alert_id, filters.get("alert_id"))
+            if alert_filtered_order_ids is not None:
+                query = query.filter(ReplenishmentOrder.order_id.in_(alert_filtered_order_ids))
             query = self._apply_filter(query, ReplenishmentOrderDetail.order_id, order_id_values)
             query = self._apply_filter(query, ReplenishmentOrder.order_type, filters.get("order_type"))
             query = self._apply_filter(query, ReplenishmentOrder.status, filters.get("status"))
@@ -988,6 +1131,7 @@ class PlanningService:
             if exception_only:
                 query = query.filter(ReplenishmentOrder.is_exception.is_(True))
             rows = query.order_by(ReplenishmentOrder.created_at.desc(), ReplenishmentOrderDetail.order_id.asc(), ReplenishmentOrderDetail.sku.asc()).all()
+            alert_links = self._order_alert_links_by_order_id([detail.order_id for detail, _ in rows])
             payload_rows = [
                 {
                     "id": detail.id,
@@ -996,7 +1140,11 @@ class PlanningService:
                     "ship_to_node_id": detail.ship_to_node_id,
                     "ship_from_node_id": detail.ship_from_node_id,
                     "order_qty": float(detail.order_qty),
-                    "alert_id": header.alert_id,
+                    "alert_id": (
+                        alert_links.get(header.order_id, {}).get("active", [])[0]
+                        if alert_links.get(header.order_id, {}).get("active", [])
+                        else ("" if alert_links.get(header.order_id, {}).get("fixed", []) else str(header.alert_id or ""))
+                    ),
                     "order_type": header.order_type,
                     "status": header.status,
                     "is_exception": header.is_exception,
@@ -1009,7 +1157,8 @@ class PlanningService:
         except OperationalError:
             query = self.db.query(ReplenishmentOrder)
             query = self._apply_filter(query, ReplenishmentOrder.region, filters.get("region"))
-            query = self._apply_filter(query, ReplenishmentOrder.alert_id, filters.get("alert_id"))
+            if alert_filtered_order_ids is not None:
+                query = query.filter(ReplenishmentOrder.order_id.in_(alert_filtered_order_ids))
             query = self._apply_filter(query, ReplenishmentOrder.order_id, order_id_values)
             query = self._apply_filter(query, ReplenishmentOrder.order_type, filters.get("order_type"))
             query = self._apply_filter(query, ReplenishmentOrder.status, filters.get("status"))
@@ -1025,6 +1174,7 @@ class PlanningService:
             if exception_only:
                 query = query.filter(ReplenishmentOrder.is_exception.is_(True))
             headers = query.order_by(ReplenishmentOrder.created_at.desc(), ReplenishmentOrder.order_id.asc()).all()
+            alert_links = self._order_alert_links_by_order_id([header.order_id for header in headers])
             payload_rows = [
                 {
                     "id": index + 1,
@@ -1033,7 +1183,11 @@ class PlanningService:
                     "ship_to_node_id": header.ship_to_node_id,
                     "ship_from_node_id": header.ship_from_node_id,
                     "order_qty": float(header.order_qty),
-                    "alert_id": header.alert_id,
+                    "alert_id": (
+                        alert_links.get(header.order_id, {}).get("active", [])[0]
+                        if alert_links.get(header.order_id, {}).get("active", [])
+                        else ("" if alert_links.get(header.order_id, {}).get("fixed", []) else str(header.alert_id or ""))
+                    ),
                     "order_type": header.order_type,
                     "status": header.status,
                     "is_exception": header.is_exception,
@@ -1132,6 +1286,19 @@ class PlanningService:
         )
         self.db.add(order)
         self.db.flush()
+        self.db.add(
+            ReplenishmentOrderAlertLink(
+                order_id=order_id,
+                alert_id=alert_id,
+                link_status="active",
+                linked_scope="order",
+                source_node_id=ship_to,
+                created_at=datetime.utcnow().replace(microsecond=0).isoformat(),
+            )
+        )
+        # If this alert was previously archived but now has an active order link,
+        # restore it to active state so active/archive sections stay consistent.
+        self._sync_alert_archive_state(alert_id)
         for (sku, d_ship_to, d_ship_from), qty in aggregated.items():
             self.db.add(
                 ReplenishmentOrderDetail(
@@ -1156,9 +1323,167 @@ class PlanningService:
         order = self.db.query(ReplenishmentOrder).filter(ReplenishmentOrder.order_id == order_id).first()
         if not order:
             raise KeyError(f"Order not found: {order_id}")
+        normalized_status = str(order.status or "").strip().lower().replace(" ", "_")
+        if normalized_status in {"delivered", "in_progress"}:
+            raise ValueError(f"Order {order_id} cannot be modified when status is '{order.status}'.")
+        self._normalize_order_alert_links(order_id)
+
+        now_iso = datetime.utcnow().replace(microsecond=0).isoformat()
+        mark_alert_fixed = bool(payload.get("mark_alert_fixed")) if payload.get("mark_alert_fixed") is not None else False
+        fixed_alert_id = str(payload.get("fixed_alert_id") or "").strip()
+        link_alert_id = str(payload.get("alert_id") or "").strip()
+        create_new_alert = bool(payload.get("create_new_alert")) if payload.get("create_new_alert") is not None else False
+        new_alert_id_input = str(payload.get("new_alert_id") or "").strip()
+        new_alert_type = str(payload.get("new_alert_type") or "manual").strip() or "manual"
+        new_alert_severity = str(payload.get("new_alert_severity") or "warning").strip().lower() or "warning"
+        new_alert_title = str(payload.get("new_alert_title") or "").strip()
+        new_alert_description = str(payload.get("new_alert_description") or "").strip()
+        new_alert_impacted_node_id = str(payload.get("new_alert_impacted_node_id") or "").strip()
+        new_alert_issue_type = str(payload.get("new_alert_issue_type") or "").strip()
+        create_new_alert = create_new_alert or bool(new_alert_title) or bool(new_alert_description)
+        if create_new_alert and link_alert_id:
+            raise ValueError("Choose either an existing alert ID or create a new alert, not both.")
+
+        active_links = (
+            self.db.query(ReplenishmentOrderAlertLink)
+            .filter(
+                ReplenishmentOrderAlertLink.order_id == order_id,
+                ReplenishmentOrderAlertLink.link_status == "active",
+            )
+            .order_by(ReplenishmentOrderAlertLink.created_at.asc(), ReplenishmentOrderAlertLink.id.asc())
+            .all()
+        )
+        active_alert_ids = [str(item.alert_id or "").strip() for item in active_links if str(item.alert_id or "").strip()]
+        current_alert_id = str(order.alert_id or "").strip() or (active_alert_ids[0] if active_alert_ids else "")
+        alert_to_fix = fixed_alert_id or current_alert_id
+        if mark_alert_fixed and alert_to_fix:
+            target_link = None
+            target_norm = alert_to_fix.strip().lower()
+            for link in active_links:
+                if str(link.alert_id or "").strip().lower() == target_norm:
+                    target_link = link
+                    break
+            if target_link is None and not fixed_alert_id and active_links:
+                # Fallback to first active alert when UI did not send a specific id.
+                target_link = active_links[0]
+            if target_link:
+                alert_to_fix = str(target_link.alert_id or "").strip() or alert_to_fix
+                fix_norm = alert_to_fix.strip().lower()
+                for link in active_links:
+                    if str(link.alert_id or "").strip().lower() == fix_norm:
+                        link.link_status = "fixed"
+                        link.fixed_at = now_iso
+                        link.fixed_by = "manual"
+            if fixed_alert_id and target_link is None:
+                raise ValueError(f"Active alert link not found on order: {fixed_alert_id}")
+            self._sync_alert_archive_state(alert_to_fix)
+            order.alert_action_taken = "marked_alert_fixed"
+
+        if create_new_alert:
+            alert_id = new_alert_id_input
+            if alert_id and self.db.query(NetworkAlert).filter(NetworkAlert.alert_id == alert_id).first():
+                raise ValueError(f"Alert already exists: {alert_id}")
+            if not alert_id:
+                base = f"ALERT-MANUAL-{order_id}".upper()
+                alert_id = base
+                suffix = 1
+                while self.db.query(NetworkAlert).filter(NetworkAlert.alert_id == alert_id).first():
+                    alert_id = f"{base}-{suffix:02d}"
+                    suffix += 1
+            created_alert = NetworkAlert(
+                alert_id=alert_id,
+                alert_type=new_alert_type,
+                severity=new_alert_severity,
+                title=new_alert_title or f"Manual alert for order {order_id}",
+                description=new_alert_description or f"Alert created from replenishment order {order_id}.",
+                impacted_node_id=new_alert_impacted_node_id or order.ship_to_node_id,
+                impacted_sku=order.sku,
+                impacted_lane_id=None,
+                effective_from=now_iso,
+                effective_to=None,
+                recommended_action_json=json.dumps(
+                    {
+                        "source": "replenishment_edit_modal",
+                        "order_id": order_id,
+                        "issue_type": new_alert_issue_type or "manual",
+                    }
+                ),
+            )
+            self.db.add(created_alert)
+            existing_link = (
+                self.db.query(ReplenishmentOrderAlertLink)
+                .filter(
+                    ReplenishmentOrderAlertLink.order_id == order_id,
+                    ReplenishmentOrderAlertLink.alert_id == alert_id,
+                )
+                .first()
+            )
+            if existing_link:
+                existing_link.link_status = "active"
+                existing_link.fixed_at = None
+                existing_link.fixed_by = None
+                existing_link.linked_scope = "supply_node" if new_alert_issue_type.lower() == "parameter_issue" else "order"
+                existing_link.source_node_id = new_alert_impacted_node_id or order.ship_to_node_id
+                existing_link.issue_type = new_alert_issue_type or None
+                existing_link.notes = new_alert_description or None
+            else:
+                self.db.add(
+                    ReplenishmentOrderAlertLink(
+                        order_id=order_id,
+                        alert_id=alert_id,
+                        link_status="active",
+                        linked_scope="supply_node" if new_alert_issue_type.lower() == "parameter_issue" else "order",
+                        source_node_id=new_alert_impacted_node_id or order.ship_to_node_id,
+                        issue_type=new_alert_issue_type or None,
+                        notes=new_alert_description or None,
+                        created_at=now_iso,
+                    )
+                )
+            order.alert_action_taken = "manual_alert_created"
+            self._sync_alert_archive_state(alert_id)
+        elif link_alert_id:
+            existing_alert = self.db.query(NetworkAlert).filter(NetworkAlert.alert_id == link_alert_id).first()
+            if not existing_alert:
+                raise ValueError(f"Alert not found: {link_alert_id}")
+            existing_link = (
+                self.db.query(ReplenishmentOrderAlertLink)
+                .filter(
+                    ReplenishmentOrderAlertLink.order_id == order_id,
+                    ReplenishmentOrderAlertLink.alert_id == link_alert_id,
+                )
+                .first()
+            )
+            if existing_link:
+                existing_link.link_status = "active"
+                existing_link.fixed_at = None
+                existing_link.fixed_by = None
+            else:
+                self.db.add(
+                    ReplenishmentOrderAlertLink(
+                        order_id=order_id,
+                        alert_id=link_alert_id,
+                        link_status="active",
+                        linked_scope="order",
+                        source_node_id=order.ship_to_node_id,
+                        created_at=now_iso,
+                    )
+                )
+            self._sync_alert_archive_state(link_alert_id)
+
+        refreshed_active_links = (
+            self.db.query(ReplenishmentOrderAlertLink)
+            .filter(
+                ReplenishmentOrderAlertLink.order_id == order_id,
+                ReplenishmentOrderAlertLink.link_status == "active",
+            )
+            .order_by(ReplenishmentOrderAlertLink.created_at.asc(), ReplenishmentOrderAlertLink.id.asc())
+            .all()
+        )
+        order.alert_id = (refreshed_active_links[0].alert_id if refreshed_active_links else "")
 
         detail_inputs = payload.get("details")
         detail_count_override: int | None = None
+        details_replaced = False
         if detail_inputs is not None:
             aggregated: dict[tuple[str, str, str | None], float] = {}
             for row in list(detail_inputs):
@@ -1189,6 +1514,9 @@ class PlanningService:
             self.db.query(ReplenishmentOrderDetail).filter(
                 ReplenishmentOrderDetail.order_id == order_id
             ).delete(synchronize_session=False)
+            # Flush delete before re-insert to avoid duplicate rows
+            # from mixed pending insert/delete states in the same session.
+            self.db.flush()
             for (sku, d_ship_to, d_ship_from), qty in aggregated.items():
                 self.db.add(
                     ReplenishmentOrderDetail(
@@ -1200,6 +1528,7 @@ class PlanningService:
                     )
                 )
             detail_count_override = len(aggregated)
+            details_replaced = True
 
         new_qty = payload.get("order_qty")
         if detail_inputs is None and new_qty is not None:
@@ -1235,7 +1564,8 @@ class PlanningService:
         if payload.get("eta"):
             order.eta = str(payload.get("eta"))
 
-        self._reconcile_order_details_for_order(order)
+        if not details_replaced:
+            self._reconcile_order_details_for_order(order)
         self.db.commit()
         detail_count = detail_count_override if detail_count_override is not None else self.db.query(ReplenishmentOrderDetail).filter(ReplenishmentOrderDetail.order_id == order_id).count()
         return {

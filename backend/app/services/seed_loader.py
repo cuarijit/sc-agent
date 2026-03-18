@@ -14,6 +14,8 @@ from statistics import NormalDist
 
 from ..database import Base, engine
 from ..models import (
+    AutonomousAction,
+    AutonomousRun,
     AuditLog,
     Document,
     DocumentChunk,
@@ -44,6 +46,7 @@ from ..models import (
     ProductMaster,
     Recommendation,
     ReplenishmentOrder,
+    ReplenishmentOrderAlertLink,
     ReplenishmentOrderDetail,
     SupplierMaster,
     SourcingOption,
@@ -984,11 +987,11 @@ def _build_network_alert_rows(
 def _alert_has_coverage(alert: NetworkAlert, source_rows: list[NetworkSourcingRule]) -> bool:
     if alert.impacted_node_id and alert.impacted_sku:
         return any(
-            row.sku == alert.impacted_sku and (row.dest_node_id == alert.impacted_node_id or (row.parent_location_node_id or "") == alert.impacted_node_id)
+            row.sku == alert.impacted_sku and row.dest_node_id == alert.impacted_node_id
             for row in source_rows
         )
     if alert.impacted_node_id:
-        return any(row.dest_node_id == alert.impacted_node_id or (row.parent_location_node_id or "") == alert.impacted_node_id for row in source_rows)
+        return any(row.dest_node_id == alert.impacted_node_id for row in source_rows)
     if alert.impacted_sku:
         return any(row.sku == alert.impacted_sku for row in source_rows)
     return False
@@ -1020,16 +1023,43 @@ def _reseed_network_alerts(db: Session) -> None:
             for row in rows
         ]
     )
+    # SessionLocal uses autoflush=False, so flush here to make freshly reseeded
+    # alerts queryable by downstream alignment/update helpers in the same tx.
+    db.flush()
 
 
 def _ensure_inventory_projection_demo_alerts(db: Session) -> bool:
     skus = [row.sku for row in db.query(ProductMaster).order_by(ProductMaster.sku.asc()).all()]
     if not skus:
         return False
+    sourcing_rows = db.query(NetworkSourcingRule).all()
+    node_type_by_id = {row.node_id: str(row.node_type or "").lower() for row in db.query(NetworkNode).all()}
+    sku_to_nodes: dict[str, list[str]] = {}
+    for row in sourcing_rows:
+        sku_to_nodes.setdefault(row.sku, []).append(row.dest_node_id)
+    for key in list(sku_to_nodes.keys()):
+        sku_to_nodes[key] = sorted(set(sku_to_nodes[key]))
+
+    def pick_node_for_sku(sku: str) -> str | None:
+        nodes = sku_to_nodes.get(sku, [])
+        if not nodes:
+            return None
+        preferred_store = next((node for node in nodes if node_type_by_id.get(node, "").startswith("store")), None)
+        if preferred_store:
+            return preferred_store
+        preferred_rdc = next((node for node in nodes if node_type_by_id.get(node, "").startswith("rdc")), None)
+        if preferred_rdc:
+            return preferred_rdc
+        return nodes[0]
+
     low_ss_sku_1 = skus[0]
     stockout_sku_1 = skus[1] if len(skus) > 1 else skus[0]
     low_ss_sku_2 = skus[3] if len(skus) > 3 else skus[-1]
     stockout_sku_2 = skus[2] if len(skus) > 2 else skus[-1]
+    low_ss_node_1 = pick_node_for_sku(low_ss_sku_1)
+    stockout_node_1 = pick_node_for_sku(stockout_sku_1)
+    low_ss_node_2 = pick_node_for_sku(low_ss_sku_2)
+    stockout_node_2 = pick_node_for_sku(stockout_sku_2)
     payloads = [
         {
             "alert_id": "ALERT-INV-LOW-001",
@@ -1037,6 +1067,7 @@ def _ensure_inventory_projection_demo_alerts(db: Session) -> bool:
             "severity": "warning",
             "title": f"Projected Inventory Below Safety Stock - {low_ss_sku_1}",
             "description": "Inventory projection demo: projected on-hand drops below safety stock in future weeks.",
+            "impacted_node_id": low_ss_node_1,
             "impacted_sku": low_ss_sku_1,
             "recommended_action_json": json.dumps({"association": "sku", "action": "review_projection_below_safety_stock"}),
         },
@@ -1046,6 +1077,7 @@ def _ensure_inventory_projection_demo_alerts(db: Session) -> bool:
             "severity": "critical",
             "title": f"Projected Inventory Stockout - {stockout_sku_1}",
             "description": "Inventory projection demo: projected on-hand becomes negative (stockout) in future weeks.",
+            "impacted_node_id": stockout_node_1,
             "impacted_sku": stockout_sku_1,
             "recommended_action_json": json.dumps({"association": "sku", "action": "trigger_stockout_mitigation"}),
         },
@@ -1055,6 +1087,7 @@ def _ensure_inventory_projection_demo_alerts(db: Session) -> bool:
             "severity": "warning",
             "title": f"Projected Inventory Below Safety Stock (Demo 2) - {low_ss_sku_2}",
             "description": "Inventory projection demo 2: projected on-hand drops below safety stock in future weeks.",
+            "impacted_node_id": low_ss_node_2,
             "impacted_sku": low_ss_sku_2,
             "recommended_action_json": json.dumps({"association": "sku", "action": "review_projection_below_safety_stock"}),
         },
@@ -1064,6 +1097,7 @@ def _ensure_inventory_projection_demo_alerts(db: Session) -> bool:
             "severity": "critical",
             "title": f"Projected Inventory Stockout (Demo 2) - {stockout_sku_2}",
             "description": "Inventory projection demo 2: projected on-hand becomes negative (stockout) in future weeks.",
+            "impacted_node_id": stockout_node_2,
             "impacted_sku": stockout_sku_2,
             "recommended_action_json": json.dumps({"association": "sku", "action": "trigger_stockout_mitigation"}),
         },
@@ -1079,7 +1113,7 @@ def _ensure_inventory_projection_demo_alerts(db: Session) -> bool:
                     severity=str(payload["severity"]),
                     title=str(payload["title"]),
                     description=str(payload["description"]),
-                    impacted_node_id=None,
+                    impacted_node_id=(str(payload["impacted_node_id"]) if payload["impacted_node_id"] else None),
                     impacted_sku=str(payload["impacted_sku"]),
                     impacted_lane_id=None,
                     effective_from="2026-03-09",
@@ -1094,6 +1128,7 @@ def _ensure_inventory_projection_demo_alerts(db: Session) -> bool:
             or row.severity != payload["severity"]
             or row.title != payload["title"]
             or row.description != payload["description"]
+            or (str(row.impacted_node_id or "") != str(payload["impacted_node_id"] or ""))
             or row.impacted_sku != payload["impacted_sku"]
             or (row.effective_from or "") != "2026-03-09"
             or (row.effective_to or "") != "2026-06-01"
@@ -1102,7 +1137,7 @@ def _ensure_inventory_projection_demo_alerts(db: Session) -> bool:
             row.severity = str(payload["severity"])
             row.title = str(payload["title"])
             row.description = str(payload["description"])
-            row.impacted_node_id = None
+            row.impacted_node_id = (str(payload["impacted_node_id"]) if payload["impacted_node_id"] else None)
             row.impacted_sku = str(payload["impacted_sku"])
             row.impacted_lane_id = None
             row.effective_from = "2026-03-09"
@@ -1838,6 +1873,10 @@ def _align_projection_source_of_truth(db: Session) -> None:
         example_profiles[(cdc_pairs[0][0], cdc_pairs[0][1])] = "excess_low_forecast_1"
     if len(cdc_pairs) > 1:
         example_profiles[(cdc_pairs[1][0], cdc_pairs[1][1])] = "excess_low_forecast_2"
+    if rdc_pairs:
+        example_profiles[(rdc_pairs[0][0], rdc_pairs[0][1])] = "below_rop_no_orders_1"
+    if len(rdc_pairs) > 1:
+        example_profiles[(rdc_pairs[1][0], rdc_pairs[1][1])] = "below_rop_no_orders_2"
 
     # Rebuild only projection-demo orders/details; keep replenishment workbench exception data.
     db.query(ReplenishmentOrderDetail).filter(ReplenishmentOrderDetail.order_id.like("RO-PROJ-%")).delete(synchronize_session=False)
@@ -2215,6 +2254,9 @@ def _align_projection_source_of_truth(db: Session) -> None:
 def reseed_network_only(db: Session) -> dict[str, int]:
     """Clear all network-related tables and repopulate with demo data (1 plant, 2 CDCs, 5 RDCs, 35 stores, single sourcing)."""
     for model in [
+        AutonomousAction,
+        AutonomousRun,
+        ReplenishmentOrderAlertLink,
         NetworkSimulationMetric,
         NetworkSimulationRun,
         NetworkScenarioChange,
@@ -2262,6 +2304,9 @@ def reset_and_seed(db: Session) -> dict[str, int]:
     if not _schema_is_compatible():
         _rebuild_schema(db)
     for model in [
+        AutonomousAction,
+        AutonomousRun,
+        ReplenishmentOrderAlertLink,
         AuditLog,
         SimulationScenario,
         InventoryLedger,
@@ -2318,4 +2363,7 @@ def reset_and_seed(db: Session) -> dict[str, int]:
         "network_pos_rows": db.query(NetworkPosWeekly).count(),
         "replenishment_orders": db.query(ReplenishmentOrder).count(),
         "replenishment_order_details": db.query(ReplenishmentOrderDetail).count(),
+        "replenishment_order_alert_links": db.query(ReplenishmentOrderAlertLink).count(),
+        "autonomous_runs": db.query(AutonomousRun).count(),
+        "autonomous_actions": db.query(AutonomousAction).count(),
     }

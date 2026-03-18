@@ -7,6 +7,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -36,6 +37,7 @@ import type {
 } from "../types";
 import {
   createReplenishmentOrder,
+  fetchDemoAlerts,
   fetchReplenishmentOrderDetails,
   fetchReplenishmentOrders,
   updateReplenishmentOrder,
@@ -163,6 +165,17 @@ export default function ReplenishmentPage() {
   });
   const [editOrderQty, setEditOrderQty] = useState("");
   const [editEta, setEditEta] = useState("");
+  const [editMarkAlertFixed, setEditMarkAlertFixed] = useState(false);
+  const [editFixedAlertId, setEditFixedAlertId] = useState("");
+  const [editCreateNewAlert, setEditCreateNewAlert] = useState(false);
+  const [editLinkAlertId, setEditLinkAlertId] = useState("");
+  const [editNewAlertId, setEditNewAlertId] = useState("");
+  const [editNewAlertType, setEditNewAlertType] = useState("manual");
+  const [editNewAlertSeverity, setEditNewAlertSeverity] = useState("warning");
+  const [editNewAlertTitle, setEditNewAlertTitle] = useState("");
+  const [editNewAlertDescription, setEditNewAlertDescription] = useState("");
+  const [editNewAlertImpactedNodeId, setEditNewAlertImpactedNodeId] = useState("");
+  const [editNewAlertIssueType, setEditNewAlertIssueType] = useState("");
   const filtersKey = globalFiltersKey(filters);
 
   const exceptionParams = baseOrderParams(filters);
@@ -180,6 +193,10 @@ export default function ReplenishmentPage() {
   const { data: allOrderDetailData } = useQuery<ReplenishmentOrderDetailsResponse>({
     queryKey: ["replenishment-order-details", "all", filtersKey],
     queryFn: () => fetchReplenishmentOrderDetails(allOrderParams),
+  });
+  const { data: demoAlertsData } = useQuery({
+    queryKey: ["demo-alerts"],
+    queryFn: fetchDemoAlerts,
   });
 
   const exceptionRows = exceptionData?.rows ?? [];
@@ -294,6 +311,10 @@ export default function ReplenishmentPage() {
     () => (orderDetailsSelectedOrderIds.length === 1 ? orderHeaderById.get(orderDetailsSelectedOrderIds[0]) ?? null : null),
     [orderDetailsSelectedOrderIds, orderHeaderById],
   );
+  const isSelectedOrderLockedForEdit = useMemo(() => {
+    const status = String(selectedSingleOrder?.status ?? "").trim().toLowerCase().replace(/\s+/g, "_");
+    return status === "delivered" || status === "in_progress";
+  }, [selectedSingleOrder?.status]);
   const selectedSingleOrderRawDetails = useMemo(() => {
     if (!selectedSingleOrder) return [];
     const grouped = new Map<string, EditableDetailRow>();
@@ -316,6 +337,31 @@ export default function ReplenishmentPage() {
     }
     return Array.from(grouped.values());
   }, [orderDetailRows, selectedSingleOrder]);
+  const allKnownAlerts = useMemo(
+    () => [...(demoAlertsData?.active ?? []), ...(demoAlertsData?.archived ?? [])],
+    [demoAlertsData?.active, demoAlertsData?.archived],
+  );
+  const currentOrderAlert = useMemo(
+    () => {
+      const target = String(selectedSingleOrder?.alert_id ?? "").trim().toLowerCase();
+      if (!target) return null;
+      return allKnownAlerts.find((item) => String(item.alert_id ?? "").trim().toLowerCase() === target) ?? null;
+    },
+    [allKnownAlerts, selectedSingleOrder?.alert_id],
+  );
+  const selectedOrderAlertIds = useMemo(() => {
+    const fromOrder = selectedSingleOrder?.alert_ids ?? [];
+    if (fromOrder.length > 0) return fromOrder;
+    // If fixed alerts exist but active list is empty, do not fallback to the
+    // legacy single alert_id field (that would make fixed alerts appear active).
+    if ((selectedSingleOrder?.fixed_alert_ids ?? []).length > 0) return [];
+    const single = String(selectedSingleOrder?.alert_id ?? "").trim();
+    return single ? [single] : [];
+  }, [selectedSingleOrder?.alert_id, selectedSingleOrder?.alert_ids, selectedSingleOrder?.fixed_alert_ids]);
+  const selectedOrderFixedAlertIds = useMemo(
+    () => selectedSingleOrder?.fixed_alert_ids ?? [],
+    [selectedSingleOrder?.fixed_alert_ids],
+  );
 
   const toPayloadDetails = (rows: EditableDetailRow[]) =>
     rows
@@ -326,6 +372,22 @@ export default function ReplenishmentPage() {
         ship_from_node_id: row.ship_from_node_id.trim() || undefined,
       }))
       .filter((row) => row.sku && Number.isFinite(row.order_qty) && row.order_qty >= 0);
+  const createDetailsSummary = useMemo(() => {
+    const valid = toPayloadDetails(createDetails);
+    return {
+      validRows: valid.length,
+      totalQty: valid.reduce((sum, row) => sum + row.order_qty, 0),
+      selectedRows: createDetails.filter((row) => row.selected).length,
+    };
+  }, [createDetails]);
+  const editDetailsSummary = useMemo(() => {
+    const valid = toPayloadDetails(editDetails);
+    return {
+      validRows: valid.length,
+      totalQty: valid.reduce((sum, row) => sum + row.order_qty, 0),
+      selectedRows: editDetails.filter((row) => row.selected).length,
+    };
+  }, [editDetails]);
   const createOrderMutation = useMutation({
     mutationFn: (payload: ReplenishmentOrderCreateRequest) => createReplenishmentOrder(payload),
     onSuccess: (result) => {
@@ -345,11 +407,45 @@ export default function ReplenishmentPage() {
     },
   });
   const editOrderMutation = useMutation({
-    mutationFn: (payload: { order_id: string; order_qty?: number; eta?: string; details?: ReplenishmentOrderCreateRequest["details"] }) =>
-      updateReplenishmentOrder(payload.order_id, { order_qty: payload.order_qty, eta: payload.eta, details: payload.details }),
+    mutationFn: (payload: {
+      order_id: string;
+      order_qty?: number;
+      eta?: string;
+      details?: ReplenishmentOrderCreateRequest["details"];
+      alert_id?: string;
+      mark_alert_fixed?: boolean;
+      fixed_alert_id?: string;
+      create_new_alert?: boolean;
+      new_alert_id?: string;
+      new_alert_type?: string;
+      new_alert_severity?: string;
+      new_alert_title?: string;
+      new_alert_description?: string;
+      new_alert_impacted_node_id?: string;
+      new_alert_issue_type?: string;
+    }) =>
+      updateReplenishmentOrder(payload.order_id, {
+        order_qty: payload.order_qty,
+        eta: payload.eta,
+        details: payload.details,
+        alert_id: payload.alert_id,
+        mark_alert_fixed: payload.mark_alert_fixed,
+        fixed_alert_id: payload.fixed_alert_id,
+        create_new_alert: payload.create_new_alert,
+        new_alert_id: payload.new_alert_id,
+        new_alert_type: payload.new_alert_type,
+        new_alert_severity: payload.new_alert_severity,
+        new_alert_title: payload.new_alert_title,
+        new_alert_description: payload.new_alert_description,
+        new_alert_impacted_node_id: payload.new_alert_impacted_node_id,
+        new_alert_issue_type: payload.new_alert_issue_type,
+      }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["replenishment-orders"] });
       queryClient.invalidateQueries({ queryKey: ["replenishment-order-details"] });
+      queryClient.invalidateQueries({ queryKey: ["demo-alerts"] });
+      queryClient.invalidateQueries({ queryKey: ["network-baseline"] });
+      queryClient.invalidateQueries({ queryKey: ["network-view"] });
       setEditDialogOpen(false);
       setEditError("");
       setOrderDetailsSelectedOrderIds([result.order_id]);
@@ -641,9 +737,20 @@ export default function ReplenishmentPage() {
     setCreateDialogOpen(true);
   };
   const openEditDialog = () => {
-    if (!selectedSingleOrder) return;
+    if (!selectedSingleOrder || isSelectedOrderLockedForEdit) return;
     setEditOrderQty(String(selectedSingleOrder.order_qty));
     setEditEta(selectedSingleOrder.eta);
+    setEditMarkAlertFixed(false);
+    setEditFixedAlertId(selectedSingleOrder.alert_id ?? "");
+    setEditCreateNewAlert(false);
+    setEditLinkAlertId("");
+    setEditNewAlertId("");
+    setEditNewAlertType("manual");
+    setEditNewAlertSeverity("warning");
+    setEditNewAlertTitle("");
+    setEditNewAlertDescription("");
+    setEditNewAlertImpactedNodeId(selectedSingleOrder.ship_to_node_id ?? "");
+    setEditNewAlertIssueType("");
     setEditDetails(selectedSingleOrderRawDetails.length ? selectedSingleOrderRawDetails : [newEditableDetailRow(selectedSingleOrder.ship_to_node_id, selectedSingleOrder.ship_from_node_id ?? "")]);
     setEditPasteText("");
     setEditBulkQty("");
@@ -670,14 +777,29 @@ export default function ReplenishmentPage() {
   };
   const submitEditOrder = () => {
     if (!selectedSingleOrder) return;
+    if (isSelectedOrderLockedForEdit) {
+      setEditError("Delivered and in-progress orders cannot be modified.");
+      return;
+    }
     const payloadDetails = toPayloadDetails(editDetails);
     const qtyValue = editOrderQty.trim() ? Number(editOrderQty) : undefined;
+    const linkAlertId = editLinkAlertId.trim();
+    const fixedAlertId = editFixedAlertId.trim();
+    const createAlert = editCreateNewAlert || Boolean(editNewAlertTitle.trim()) || Boolean(editNewAlertDescription.trim());
     if (qtyValue !== undefined && (!Number.isFinite(qtyValue) || qtyValue < 0)) {
       setEditError("Order Qty must be a valid non-negative number.");
       return;
     }
-    if (!payloadDetails.length && qtyValue === undefined && !editEta.trim()) {
-      setEditError("Provide details, order quantity, or delivery date to update.");
+    if (createAlert && linkAlertId) {
+      setEditError("Choose either an existing alert ID or create a new alert.");
+      return;
+    }
+    if (editMarkAlertFixed && !fixedAlertId) {
+      setEditError("Select an alert ID to mark as fixed.");
+      return;
+    }
+    if (!payloadDetails.length && qtyValue === undefined && !editEta.trim() && !editMarkAlertFixed && !linkAlertId && !createAlert) {
+      setEditError("Provide details, order quantity, delivery date, or alert updates.");
       return;
     }
     editOrderMutation.mutate({
@@ -685,6 +807,17 @@ export default function ReplenishmentPage() {
       order_qty: qtyValue,
       eta: editEta.trim() || undefined,
       details: payloadDetails.length ? payloadDetails : undefined,
+      mark_alert_fixed: editMarkAlertFixed || undefined,
+      fixed_alert_id: editMarkAlertFixed ? fixedAlertId : undefined,
+      alert_id: linkAlertId || undefined,
+      create_new_alert: createAlert || undefined,
+      new_alert_id: editNewAlertId.trim() || undefined,
+      new_alert_type: createAlert ? editNewAlertType.trim() || "manual" : undefined,
+      new_alert_severity: createAlert ? editNewAlertSeverity.trim() || "warning" : undefined,
+      new_alert_title: createAlert ? editNewAlertTitle.trim() || undefined : undefined,
+      new_alert_description: createAlert ? editNewAlertDescription.trim() || undefined : undefined,
+      new_alert_impacted_node_id: createAlert ? editNewAlertImpactedNodeId.trim() || undefined : undefined,
+      new_alert_issue_type: createAlert ? editNewAlertIssueType.trim() || undefined : undefined,
     });
   };
   const applyBulkQty = (target: "create" | "edit") => {
@@ -879,11 +1012,16 @@ export default function ReplenishmentPage() {
               <Button
                 size="small"
                 variant="outlined"
-                disabled={!selectedSingleOrder}
+                disabled={!selectedSingleOrder || isSelectedOrderLockedForEdit}
                 onClick={openEditDialog}
               >
                 Edit Existing Order
               </Button>
+              {selectedSingleOrder && isSelectedOrderLockedForEdit ? (
+                <Typography variant="caption" color="warning.main">
+                  Edit disabled: delivered and in-progress orders are locked.
+                </Typography>
+              ) : null}
             </Stack>
 
             <Box
@@ -981,303 +1119,519 @@ export default function ReplenishmentPage() {
         }}
       />
 
-      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        fullWidth
+        maxWidth="xl"
+        slotProps={{ paper: { sx: { width: "92vw", minHeight: "82vh", maxHeight: "92vh" } } }}
+      >
         <DialogTitle>Create New Order</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={1} sx={{ mt: 0.5 }}>
-            <TextField
-              label="Order ID (optional)"
-              value={createForm.order_id}
-              onChange={(event) => setCreateForm((prev) => ({ ...prev, order_id: event.target.value }))}
-            />
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-              <TextField
-                label="Order Type"
-                value={createForm.order_type}
-                onChange={(event) => setCreateForm((prev) => ({ ...prev, order_type: event.target.value }))}
-                fullWidth
-              />
-              <TextField
-                label="Status"
-                value={createForm.status}
-                onChange={(event) => setCreateForm((prev) => ({ ...prev, status: event.target.value }))}
-                fullWidth
-              />
-            </Stack>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-              <TextField
-                label="Ship To Node"
-                value={createForm.ship_to_node_id}
-                onChange={(event) => setCreateForm((prev) => ({ ...prev, ship_to_node_id: event.target.value }))}
-                fullWidth
-              />
-              <TextField
-                label="Ship From Node"
-                value={createForm.ship_from_node_id}
-                onChange={(event) => setCreateForm((prev) => ({ ...prev, ship_from_node_id: event.target.value }))}
-                fullWidth
-              />
-            </Stack>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => setCreateDetails((prev) => [...prev, newEditableDetailRow(createForm.ship_to_node_id, createForm.ship_from_node_id)])}
-              >
-                Add Detail Row
-              </Button>
-              <Button size="small" variant="outlined" onClick={() => deleteSelectedDetails("create")}>
-                Delete Selected
-              </Button>
-            </Stack>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-              <TextField
-                label="Bulk Qty for Selected"
-                type="number"
-                value={createBulkQty}
-                onChange={(event) => setCreateBulkQty(event.target.value)}
-                fullWidth
-              />
-              <Button size="small" variant="outlined" onClick={() => applyBulkQty("create")}>
-                Apply Bulk Edit
-              </Button>
-            </Stack>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-              <TextField
-                multiline
-                minRows={3}
-                label="Paste Rows (SKU,Qty,ShipTo,ShipFrom)"
-                value={createPasteText}
-                onChange={(event) => setCreatePasteText(event.target.value)}
-                fullWidth
-              />
-              <Stack spacing={1} sx={{ minWidth: 150 }}>
-                <Button size="small" variant="outlined" onClick={() => appendPasteRows("create")}>
-                  Paste Apply
-                </Button>
-                <Button size="small" variant="outlined" onClick={() => createImportRef.current?.click()}>
-                  Import CSV
-                </Button>
-                <input
-                  ref={createImportRef}
-                  type="file"
-                  accept=".csv,.txt"
-                  style={{ display: "none" }}
-                  onChange={(event) => importDetailsFromFile("create", event.target.files?.[0] ?? null)}
-                />
-              </Stack>
-            </Stack>
-            <Box sx={{ border: (theme) => `1px solid ${theme.palette.divider}`, borderRadius: 1, p: 1 }}>
-              <Typography variant="caption" color="text.secondary">Order Details (Inline Edit)</Typography>
-              <Stack spacing={0.75} sx={{ mt: 0.75 }}>
-                {createDetails.map((row) => (
-                  <Stack key={row.id} direction={{ xs: "column", md: "row" }} spacing={0.75} alignItems={{ xs: "stretch", md: "center" }}>
-                    <Checkbox
-                      size="small"
-                      checked={row.selected}
-                      onChange={(event) =>
-                        setCreateDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, selected: event.target.checked } : item)))
-                      }
-                    />
+        <DialogContent dividers sx={{ p: 1.5, overflow: "hidden" }}>
+          <Stack direction={{ xs: "column", lg: "row" }} spacing={1.5} sx={{ height: "100%", minHeight: 0 }}>
+            <Box sx={{ flex: 0.9, minWidth: 280 }}>
+              <SectionCard title="Order Header" subtitle="Core order information and schedule">
+                <Stack spacing={1}>
+                  <TextField
+                    label="Order ID (optional)"
+                    value={createForm.order_id}
+                    onChange={(event) => setCreateForm((prev) => ({ ...prev, order_id: event.target.value }))}
+                  />
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                     <TextField
-                      label="SKU"
-                      value={row.sku}
-                      onChange={(event) =>
-                        setCreateDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, sku: event.target.value } : item)))
-                      }
+                      label="Order Type"
+                      value={createForm.order_type}
+                      onChange={(event) => setCreateForm((prev) => ({ ...prev, order_type: event.target.value }))}
                       fullWidth
                     />
                     <TextField
-                      label="Qty"
-                      type="number"
-                      value={row.order_qty}
-                      onChange={(event) =>
-                        setCreateDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, order_qty: event.target.value } : item)))
-                      }
-                      sx={{ minWidth: 120 }}
-                    />
-                    <TextField
-                      label="Ship To"
-                      value={row.ship_to_node_id}
-                      onChange={(event) =>
-                        setCreateDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, ship_to_node_id: event.target.value } : item)))
-                      }
-                      sx={{ minWidth: 140 }}
-                    />
-                    <TextField
-                      label="Ship From"
-                      value={row.ship_from_node_id}
-                      onChange={(event) =>
-                        setCreateDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, ship_from_node_id: event.target.value } : item)))
-                      }
-                      sx={{ minWidth: 140 }}
+                      label="Status"
+                      value={createForm.status}
+                      onChange={(event) => setCreateForm((prev) => ({ ...prev, status: event.target.value }))}
+                      fullWidth
                     />
                   </Stack>
-                ))}
-              </Stack>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <TextField
+                      label="Ship To Node"
+                      value={createForm.ship_to_node_id}
+                      onChange={(event) => setCreateForm((prev) => ({ ...prev, ship_to_node_id: event.target.value }))}
+                      fullWidth
+                    />
+                    <TextField
+                      label="Ship From Node"
+                      value={createForm.ship_from_node_id}
+                      onChange={(event) => setCreateForm((prev) => ({ ...prev, ship_from_node_id: event.target.value }))}
+                      fullWidth
+                    />
+                  </Stack>
+                  <TextField
+                    label="Delivery Date (ETA)"
+                    type="date"
+                    value={createForm.eta}
+                    onChange={(event) => setCreateForm((prev) => ({ ...prev, eta: event.target.value }))}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={createForm.is_exception}
+                        onChange={(event) => setCreateForm((prev) => ({ ...prev, is_exception: event.target.checked }))}
+                      />
+                    }
+                    label="Mark as Exception Order"
+                  />
+                  <TextField
+                    label="Exception Reason (optional)"
+                    value={createForm.exception_reason}
+                    onChange={(event) => setCreateForm((prev) => ({ ...prev, exception_reason: event.target.value }))}
+                  />
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                    <Chip label={`Valid lines: ${createDetailsSummary.validRows}`} size="small" />
+                    <Chip label={`Line qty total: ${createDetailsSummary.totalQty.toFixed(2)}`} size="small" />
+                    <Chip label={`Selected lines: ${createDetailsSummary.selectedRows}`} size="small" />
+                  </Stack>
+                </Stack>
+              </SectionCard>
             </Box>
-            <TextField
-              label="Delivery Date (ETA)"
-              type="date"
-              value={createForm.eta}
-              onChange={(event) => setCreateForm((prev) => ({ ...prev, eta: event.target.value }))}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={createForm.is_exception}
-                  onChange={(event) => setCreateForm((prev) => ({ ...prev, is_exception: event.target.checked }))}
-                />
-              }
-              label="Mark as Exception Order"
-            />
-            <TextField
-              label="Exception Reason (optional)"
-              value={createForm.exception_reason}
-              onChange={(event) => setCreateForm((prev) => ({ ...prev, exception_reason: event.target.value }))}
-            />
-            {createError ? <Typography variant="caption" color="error.main">{createError}</Typography> : null}
+            <Box sx={{ flex: 1.4, minWidth: 0 }}>
+              <SectionCard title="Order Line Items" subtitle="Add, bulk edit, paste/import, and inline edit item-level details">
+                <Stack spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => setCreateDetails((prev) => [...prev, newEditableDetailRow(createForm.ship_to_node_id, createForm.ship_from_node_id)])}
+                    >
+                      Add Line
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => deleteSelectedDetails("create")}>
+                      Delete Selected
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => appendPasteRows("create")}>
+                      Paste Apply
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => createImportRef.current?.click()}>
+                      Import CSV
+                    </Button>
+                    <input
+                      ref={createImportRef}
+                      type="file"
+                      accept=".csv,.txt"
+                      style={{ display: "none" }}
+                      onChange={(event) => importDetailsFromFile("create", event.target.files?.[0] ?? null)}
+                    />
+                  </Stack>
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                    <TextField
+                      label="Bulk Qty for Selected"
+                      type="number"
+                      value={createBulkQty}
+                      onChange={(event) => setCreateBulkQty(event.target.value)}
+                      fullWidth
+                    />
+                    <Button size="small" variant="outlined" onClick={() => applyBulkQty("create")}>
+                      Apply Bulk Qty
+                    </Button>
+                  </Stack>
+                  <TextField
+                    multiline
+                    minRows={3}
+                    label="Paste Rows (SKU,Qty,ShipTo,ShipFrom)"
+                    value={createPasteText}
+                    onChange={(event) => setCreatePasteText(event.target.value)}
+                    fullWidth
+                  />
+                  <Box sx={{ border: (theme) => `1px solid ${theme.palette.divider}`, borderRadius: 1, p: 1, maxHeight: "48vh", overflow: "auto" }}>
+                    <Stack spacing={0.75}>
+                      {createDetails.map((row) => (
+                        <Stack
+                          key={row.id}
+                          direction={{ xs: "column", md: "row" }}
+                          spacing={0.75}
+                          alignItems={{ xs: "stretch", md: "center" }}
+                          sx={{ p: 0.75, borderRadius: 1, bgcolor: "action.hover" }}
+                        >
+                          <Checkbox
+                            size="small"
+                            checked={row.selected}
+                            onChange={(event) =>
+                              setCreateDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, selected: event.target.checked } : item)))
+                            }
+                          />
+                          <TextField
+                            label="SKU"
+                            value={row.sku}
+                            onChange={(event) =>
+                              setCreateDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, sku: event.target.value } : item)))
+                            }
+                            fullWidth
+                          />
+                          <TextField
+                            label="Qty"
+                            type="number"
+                            value={row.order_qty}
+                            onChange={(event) =>
+                              setCreateDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, order_qty: event.target.value } : item)))
+                            }
+                            sx={{ minWidth: 120 }}
+                          />
+                          <TextField
+                            label="Ship To"
+                            value={row.ship_to_node_id}
+                            onChange={(event) =>
+                              setCreateDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, ship_to_node_id: event.target.value } : item)))
+                            }
+                            sx={{ minWidth: 150 }}
+                          />
+                          <TextField
+                            label="Ship From"
+                            value={row.ship_from_node_id}
+                            onChange={(event) =>
+                              setCreateDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, ship_from_node_id: event.target.value } : item)))
+                            }
+                            sx={{ minWidth: 150 }}
+                          />
+                        </Stack>
+                      ))}
+                    </Stack>
+                  </Box>
+                  {createError ? <Typography variant="caption" color="error.main">{createError}</Typography> : null}
+                </Stack>
+              </SectionCard>
+            </Box>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
           <Button onClick={submitCreateOrder} disabled={createOrderMutation.isPending} variant="contained">
-            Create
+            {createOrderMutation.isPending ? "Creating..." : "Create Order"}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} fullWidth maxWidth="sm">
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        fullWidth
+        maxWidth="xl"
+        slotProps={{ paper: { sx: { width: "92vw", minHeight: "82vh", maxHeight: "92vh" } } }}
+      >
         <DialogTitle>Edit Existing Order</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={1} sx={{ mt: 0.5 }}>
-            <Typography variant="caption" color="text.secondary">
-              Order: {selectedSingleOrder?.order_id ?? "-"}
-            </Typography>
-            <TextField
-              label="Order Qty"
-              type="number"
-              value={editOrderQty}
-              onChange={(event) => setEditOrderQty(event.target.value)}
-            />
-            <TextField
-              label="Delivery Date (ETA)"
-              type="date"
-              value={editEta}
-              onChange={(event) => setEditEta(event.target.value)}
-              slotProps={{ inputLabel: { shrink: true } }}
-            />
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() =>
-                  setEditDetails((prev) => [
-                    ...prev,
-                    newEditableDetailRow(selectedSingleOrder?.ship_to_node_id ?? "", selectedSingleOrder?.ship_from_node_id ?? ""),
-                  ])
-                }
-              >
-                Add Detail Row
-              </Button>
-              <Button size="small" variant="outlined" onClick={() => deleteSelectedDetails("edit")}>
-                Delete Selected
-              </Button>
-            </Stack>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-              <TextField
-                label="Bulk Qty for Selected"
-                type="number"
-                value={editBulkQty}
-                onChange={(event) => setEditBulkQty(event.target.value)}
-                fullWidth
-              />
-              <Button size="small" variant="outlined" onClick={() => applyBulkQty("edit")}>
-                Apply Bulk Edit
-              </Button>
-            </Stack>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-              <TextField
-                multiline
-                minRows={3}
-                label="Paste Rows (SKU,Qty,ShipTo,ShipFrom)"
-                value={editPasteText}
-                onChange={(event) => setEditPasteText(event.target.value)}
-                fullWidth
-              />
-              <Stack spacing={1} sx={{ minWidth: 150 }}>
-                <Button size="small" variant="outlined" onClick={() => appendPasteRows("edit")}>
-                  Paste Apply
-                </Button>
-                <Button size="small" variant="outlined" onClick={() => editImportRef.current?.click()}>
-                  Import CSV
-                </Button>
-                <input
-                  ref={editImportRef}
-                  type="file"
-                  accept=".csv,.txt"
-                  style={{ display: "none" }}
-                  onChange={(event) => importDetailsFromFile("edit", event.target.files?.[0] ?? null)}
-                />
-              </Stack>
-            </Stack>
-            <Box sx={{ border: (theme) => `1px solid ${theme.palette.divider}`, borderRadius: 1, p: 1 }}>
-              <Typography variant="caption" color="text.secondary">Order Details (Inline Edit)</Typography>
-              <Stack spacing={0.75} sx={{ mt: 0.75 }}>
-                {editDetails.map((row) => (
-                  <Stack key={row.id} direction={{ xs: "column", md: "row" }} spacing={0.75} alignItems={{ xs: "stretch", md: "center" }}>
-                    <Checkbox
-                      size="small"
-                      checked={row.selected}
-                      onChange={(event) =>
-                        setEditDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, selected: event.target.checked } : item)))
+        <DialogContent dividers sx={{ p: 1.5, overflow: "hidden" }}>
+          <Stack direction={{ xs: "column", lg: "row" }} spacing={1.5} sx={{ height: "100%", minHeight: 0 }}>
+            <Box sx={{ flex: 0.9, minWidth: 280 }}>
+              <SectionCard title="Order Header" subtitle="Update overall quantity and ETA while preserving item details">
+                <Stack spacing={1}>
+                  <Typography variant="caption" color="text.secondary">
+                    Order: {selectedSingleOrder?.order_id ?? "-"}
+                  </Typography>
+                  <TextField
+                    label="Order Qty"
+                    type="number"
+                    value={editOrderQty}
+                    onChange={(event) => setEditOrderQty(event.target.value)}
+                  />
+                  <TextField
+                    label="Delivery Date (ETA)"
+                    type="date"
+                    value={editEta}
+                    onChange={(event) => setEditEta(event.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                  />
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                    <Chip label={`Valid lines: ${editDetailsSummary.validRows}`} size="small" />
+                    <Chip label={`Line qty total: ${editDetailsSummary.totalQty.toFixed(2)}`} size="small" />
+                    <Chip label={`Selected lines: ${editDetailsSummary.selectedRows}`} size="small" />
+                  </Stack>
+                  <Box sx={{ border: (theme) => `1px solid ${theme.palette.divider}`, borderRadius: 1, p: 1 }}>
+                    <Typography variant="subtitle2">Alert Management</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Current alert: {selectedSingleOrder?.alert_id || "-"}
+                    </Typography>
+                    {selectedOrderAlertIds.length > 0 ? (
+                      <Stack direction="row" spacing={0.6} sx={{ mt: 0.75, flexWrap: "wrap" }}>
+                        {selectedOrderAlertIds.map((alertId) => (
+                          <Chip
+                            key={alertId}
+                            size="small"
+                            variant={alertId === selectedSingleOrder?.alert_id ? "filled" : "outlined"}
+                            label={alertId}
+                          />
+                        ))}
+                      </Stack>
+                    ) : null}
+                    {selectedOrderFixedAlertIds.length > 0 ? (
+                      <Stack direction="row" spacing={0.6} sx={{ mt: 0.5, flexWrap: "wrap" }}>
+                        {selectedOrderFixedAlertIds.map((alertId) => (
+                          <Chip key={`fixed-${alertId}`} size="small" variant="outlined" color="default" label={`Archived: ${alertId}`} />
+                        ))}
+                      </Stack>
+                    ) : null}
+                    {selectedSingleOrder?.alert_id ? (
+                      <Box
+                        sx={(theme) => ({
+                          mt: 0.75,
+                          p: 1,
+                          borderRadius: 1,
+                          border: `1px solid ${alpha(
+                            String(currentOrderAlert?.severity ?? "").toLowerCase() === "critical"
+                              ? theme.palette.error.main
+                              : theme.palette.warning.main,
+                            0.55,
+                          )}`,
+                          backgroundColor: alpha(
+                            String(currentOrderAlert?.severity ?? "").toLowerCase() === "critical"
+                              ? theme.palette.error.main
+                              : theme.palette.warning.main,
+                            0.12,
+                          ),
+                        })}
+                      >
+                        <Stack
+                          direction={{ xs: "column", sm: "row" }}
+                          spacing={1}
+                          alignItems={{ xs: "flex-start", sm: "center" }}
+                          justifyContent="space-between"
+                        >
+                          <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                            Alert linked to this order
+                          </Typography>
+                          <Chip
+                            size="small"
+                            color={String(currentOrderAlert?.severity ?? "").toLowerCase() === "critical" ? "error" : "warning"}
+                            label={`${selectedSingleOrder.alert_id}${currentOrderAlert?.severity ? ` (${currentOrderAlert.severity})` : ""}`}
+                          />
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary">
+                          {currentOrderAlert?.title || "Alert details are not currently available in the loaded alert set."}
+                        </Typography>
+                      </Box>
+                    ) : null}
+                    {currentOrderAlert ? (
+                      <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap", mt: 0.75 }}>
+                        <Chip label={`Severity: ${currentOrderAlert.severity}`} size="small" />
+                        <Chip label={currentOrderAlert.alert_type} size="small" />
+                      </Stack>
+                    ) : null}
+                    <FormControlLabel
+                      sx={{ mt: 0.75 }}
+                      control={
+                        <Switch
+                          checked={editMarkAlertFixed}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setEditMarkAlertFixed(checked);
+                            if (checked && !editFixedAlertId) {
+                              setEditFixedAlertId(selectedOrderAlertIds[0] ?? selectedSingleOrder?.alert_id ?? "");
+                            }
+                          }}
+                        />
                       }
+                      label="Mark current alert as fixed"
                     />
+                    {editMarkAlertFixed ? (
+                      <TextField
+                        label="Alert ID to mark fixed"
+                        value={editFixedAlertId}
+                        onChange={(event) => setEditFixedAlertId(event.target.value)}
+                        placeholder="ALERT-..."
+                        fullWidth
+                        sx={{ mt: 0.5 }}
+                      />
+                    ) : null}
                     <TextField
-                      label="SKU"
-                      value={row.sku}
-                      onChange={(event) =>
-                        setEditDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, sku: event.target.value } : item)))
-                      }
+                      label="Link Existing Alert ID (optional)"
+                      value={editLinkAlertId}
+                      onChange={(event) => setEditLinkAlertId(event.target.value)}
+                      placeholder="ALERT-..."
                       fullWidth
+                      disabled={editCreateNewAlert || isSelectedOrderLockedForEdit}
                     />
-                    <TextField
-                      label="Qty"
-                      type="number"
-                      value={row.order_qty}
-                      onChange={(event) =>
-                        setEditDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, order_qty: event.target.value } : item)))
-                      }
-                      sx={{ minWidth: 120 }}
+                    <FormControlLabel
+                      sx={{ mt: 0.5 }}
+                      control={<Switch checked={editCreateNewAlert} onChange={(event) => setEditCreateNewAlert(event.target.checked)} />}
+                      label="Add and link a new alert"
                     />
-                    <TextField
-                      label="Ship To"
-                      value={row.ship_to_node_id}
-                      onChange={(event) =>
-                        setEditDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, ship_to_node_id: event.target.value } : item)))
+                    {editCreateNewAlert ? (
+                      <Stack spacing={1}>
+                        <TextField
+                          label="New Alert ID (optional)"
+                          value={editNewAlertId}
+                          onChange={(event) => setEditNewAlertId(event.target.value)}
+                          placeholder="Auto-generated when empty"
+                          fullWidth
+                        />
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                          <TextField
+                            label="Alert Type"
+                            value={editNewAlertType}
+                            onChange={(event) => setEditNewAlertType(event.target.value)}
+                            fullWidth
+                          />
+                          <TextField
+                            label="Severity"
+                            value={editNewAlertSeverity}
+                            onChange={(event) => setEditNewAlertSeverity(event.target.value)}
+                            placeholder="critical | warning | info"
+                            fullWidth
+                          />
+                        </Stack>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                          <TextField
+                            label="Impacted Node (supply node)"
+                            value={editNewAlertImpactedNodeId}
+                            onChange={(event) => setEditNewAlertImpactedNodeId(event.target.value)}
+                            fullWidth
+                          />
+                          <TextField
+                            label="Issue Type (e.g. parameter_issue)"
+                            value={editNewAlertIssueType}
+                            onChange={(event) => setEditNewAlertIssueType(event.target.value)}
+                            fullWidth
+                          />
+                        </Stack>
+                        <TextField
+                          label="New Alert Title"
+                          value={editNewAlertTitle}
+                          onChange={(event) => setEditNewAlertTitle(event.target.value)}
+                          fullWidth
+                        />
+                        <TextField
+                          multiline
+                          minRows={2}
+                          label="New Alert Description"
+                          value={editNewAlertDescription}
+                          onChange={(event) => setEditNewAlertDescription(event.target.value)}
+                          fullWidth
+                        />
+                      </Stack>
+                    ) : null}
+                  </Box>
+                </Stack>
+              </SectionCard>
+            </Box>
+            <Box sx={{ flex: 1.4, minWidth: 0 }}>
+              <SectionCard title="Order Line Items" subtitle="Modify item-level quantities and routing with bulk/paste tools">
+                <Stack spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() =>
+                        setEditDetails((prev) => [
+                          ...prev,
+                          newEditableDetailRow(selectedSingleOrder?.ship_to_node_id ?? "", selectedSingleOrder?.ship_from_node_id ?? ""),
+                        ])
                       }
-                      sx={{ minWidth: 140 }}
-                    />
-                    <TextField
-                      label="Ship From"
-                      value={row.ship_from_node_id}
-                      onChange={(event) =>
-                        setEditDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, ship_from_node_id: event.target.value } : item)))
-                      }
-                      sx={{ minWidth: 140 }}
+                    >
+                      Add Line
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => deleteSelectedDetails("edit")}>
+                      Delete Selected
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => appendPasteRows("edit")}>
+                      Paste Apply
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => editImportRef.current?.click()}>
+                      Import CSV
+                    </Button>
+                    <input
+                      ref={editImportRef}
+                      type="file"
+                      accept=".csv,.txt"
+                      style={{ display: "none" }}
+                      onChange={(event) => importDetailsFromFile("edit", event.target.files?.[0] ?? null)}
                     />
                   </Stack>
-                ))}
-              </Stack>
+                  <Stack direction={{ xs: "column", md: "row" }} spacing={1}>
+                    <TextField
+                      label="Bulk Qty for Selected"
+                      type="number"
+                      value={editBulkQty}
+                      onChange={(event) => setEditBulkQty(event.target.value)}
+                      fullWidth
+                    />
+                    <Button size="small" variant="outlined" onClick={() => applyBulkQty("edit")}>
+                      Apply Bulk Qty
+                    </Button>
+                  </Stack>
+                  <TextField
+                    multiline
+                    minRows={3}
+                    label="Paste Rows (SKU,Qty,ShipTo,ShipFrom)"
+                    value={editPasteText}
+                    onChange={(event) => setEditPasteText(event.target.value)}
+                    fullWidth
+                  />
+                  <Box sx={{ border: (theme) => `1px solid ${theme.palette.divider}`, borderRadius: 1, p: 1, maxHeight: "48vh", overflow: "auto" }}>
+                    <Stack spacing={0.75}>
+                      {editDetails.map((row) => (
+                        <Stack
+                          key={row.id}
+                          direction={{ xs: "column", md: "row" }}
+                          spacing={0.75}
+                          alignItems={{ xs: "stretch", md: "center" }}
+                          sx={{ p: 0.75, borderRadius: 1, bgcolor: "action.hover" }}
+                        >
+                          <Checkbox
+                            size="small"
+                            checked={row.selected}
+                            onChange={(event) =>
+                              setEditDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, selected: event.target.checked } : item)))
+                            }
+                          />
+                          <TextField
+                            label="SKU"
+                            value={row.sku}
+                            onChange={(event) =>
+                              setEditDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, sku: event.target.value } : item)))
+                            }
+                            fullWidth
+                          />
+                          <TextField
+                            label="Qty"
+                            type="number"
+                            value={row.order_qty}
+                            onChange={(event) =>
+                              setEditDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, order_qty: event.target.value } : item)))
+                            }
+                            sx={{ minWidth: 120 }}
+                          />
+                          <TextField
+                            label="Ship To"
+                            value={row.ship_to_node_id}
+                            onChange={(event) =>
+                              setEditDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, ship_to_node_id: event.target.value } : item)))
+                            }
+                            sx={{ minWidth: 150 }}
+                          />
+                          <TextField
+                            label="Ship From"
+                            value={row.ship_from_node_id}
+                            onChange={(event) =>
+                              setEditDetails((prev) => prev.map((item) => (item.id === row.id ? { ...item, ship_from_node_id: event.target.value } : item)))
+                            }
+                            sx={{ minWidth: 150 }}
+                          />
+                        </Stack>
+                      ))}
+                    </Stack>
+                  </Box>
+                  {editError ? <Typography variant="caption" color="error.main">{editError}</Typography> : null}
+                </Stack>
+              </SectionCard>
             </Box>
-            {editError ? <Typography variant="caption" color="error.main">{editError}</Typography> : null}
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-          <Button onClick={submitEditOrder} disabled={editOrderMutation.isPending || !selectedSingleOrder} variant="contained">
-            Save
+          <Button
+            onClick={submitEditOrder}
+            disabled={editOrderMutation.isPending || !selectedSingleOrder || isSelectedOrderLockedForEdit}
+            variant="contained"
+          >
+            {editOrderMutation.isPending ? "Saving..." : "Save Changes"}
           </Button>
         </DialogActions>
       </Dialog>

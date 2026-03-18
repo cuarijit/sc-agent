@@ -212,8 +212,11 @@ class InventoryProjectionService:
             query = query.filter(ReplenishmentOrderDetail.ship_to_node_id == node)
         rows = query.all()
         demo_rows = [row for row in rows if str(row[0].order_id).startswith("RO-PROJ-")]
+        autonomous_rows = [row for row in rows if str(row[0].order_id).startswith("AUTO-RO-")]
         if demo_rows:
-            rows = demo_rows
+            # Keep demo-baseline orders for stable walkthroughs, but always include
+            # autonomous orders so Workflow 3 visibly improves projections.
+            rows = demo_rows + autonomous_rows
         qty_map: dict[int, float] = {}
         qty_non_exception_map: dict[int, float] = {}
         qty_exception_map: dict[int, float] = {}

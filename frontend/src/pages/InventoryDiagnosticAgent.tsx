@@ -20,6 +20,7 @@ import {
 import { type GridColDef, type GridRowId, type GridRowSelectionModel } from "@mui/x-data-grid";
 import { useCallback, useEffect, useRef, useState } from "react";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
+import { createReplenishmentOrder, fetchDemoAlerts, fetchProjectedInventoryAlerts } from "../services/api";
 
 // ---------------------------------------------------------------------------
 // Demo data: SKU–Location combinations for diagnostic flow
@@ -29,6 +30,7 @@ export interface SkuLocationRow {
   id: string;
   sku: string;
   location: string;
+  alert_id?: string;
   node_type: string;
   forecast_qty: number;
   on_hand: number;
@@ -61,29 +63,29 @@ const HELP_PROMPTS = [
 
 // Demo data: Stock outs in next 6 weeks (low weeks of cover, critical risk)
 const DEMO_STOCKOUTS_6W: SkuLocationRow[] = [
-  { id: "s1", sku: "SKU-101", location: "STORE-NYC-01", node_type: "store", forecast_qty: 520, on_hand: 72, safety_stock: 150, weeks_of_cover: 0.8, stockout_risk: "Critical", demand_class: "A" },
-  { id: "s2", sku: "SKU-102", location: "RDC-NORTHEAST", node_type: "rdc", forecast_qty: 1400, on_hand: 210, safety_stock: 500, weeks_of_cover: 0.9, stockout_risk: "Critical", demand_class: "A" },
-  { id: "s3", sku: "SKU-101", location: "STORE-PHL-01", node_type: "store", forecast_qty: 380, on_hand: 38, safety_stock: 110, weeks_of_cover: 0.6, stockout_risk: "Critical", demand_class: "A" },
-  { id: "s4", sku: "SKU-203", location: "STORE-BOS-02", node_type: "store", forecast_qty: 290, on_hand: 55, safety_stock: 95, weeks_of_cover: 1.1, stockout_risk: "Warning", demand_class: "B" },
-  { id: "s5", sku: "SKU-204", location: "CDC-MIDATL", node_type: "cdc", forecast_qty: 920, on_hand: 180, safety_stock: 300, weeks_of_cover: 1.0, stockout_risk: "Warning", demand_class: "A" },
+  { id: "s1", sku: "BAR-002", location: "STORE-001", alert_id: "ALERT-INV-STOCKOUT-001", node_type: "store", forecast_qty: 420, on_hand: 55, safety_stock: 180, weeks_of_cover: 0.7, stockout_risk: "Critical", demand_class: "A" },
+  { id: "s2", sku: "BAR-002", location: "RDC-001", alert_id: "ALERT-INV-LOW-001", node_type: "rdc", forecast_qty: 1280, on_hand: 240, safety_stock: 520, weeks_of_cover: 1.0, stockout_risk: "Warning", demand_class: "A" },
+  { id: "s3", sku: "SNACK-003", location: "STORE-010", alert_id: "ALERT-016", node_type: "store", forecast_qty: 360, on_hand: 65, safety_stock: 130, weeks_of_cover: 0.8, stockout_risk: "Critical", demand_class: "A" },
+  { id: "s4", sku: "SNACK-003", location: "RDC-003", alert_id: "ALERT-SKUNODE-001", node_type: "rdc", forecast_qty: 940, on_hand: 220, safety_stock: 360, weeks_of_cover: 1.1, stockout_risk: "Warning", demand_class: "B" },
+  { id: "s5", sku: "BAR-002", location: "CDC-001", alert_id: "ALERT-NODE-001", node_type: "cdc", forecast_qty: 1010, on_hand: 210, safety_stock: 320, weeks_of_cover: 1.0, stockout_risk: "Warning", demand_class: "A" },
 ];
 
 // Demo data: WATER demand +20% (WATER SKU and demand-increase context)
 const DEMO_WATER_DEMAND: SkuLocationRow[] = [
-  { id: "w1", sku: "WATER", location: "STORE-NYC-01", node_type: "store", forecast_qty: 840, on_hand: 420, safety_stock: 200, weeks_of_cover: 2.5, stockout_risk: "Low", demand_class: "A" },
-  { id: "w2", sku: "WATER", location: "STORE-PHL-01", node_type: "store", forecast_qty: 660, on_hand: 280, safety_stock: 180, weeks_of_cover: 2.0, stockout_risk: "Warning", demand_class: "A" },
-  { id: "w3", sku: "WATER", location: "RDC-NORTHEAST", node_type: "rdc", forecast_qty: 2400, on_hand: 1100, safety_stock: 600, weeks_of_cover: 2.1, stockout_risk: "Low", demand_class: "A" },
-  { id: "w4", sku: "WATER", location: "STORE-BOS-02", node_type: "store", forecast_qty: 480, on_hand: 190, safety_stock: 120, weeks_of_cover: 1.8, stockout_risk: "Warning", demand_class: "B" },
-  { id: "w5", sku: "WATER", location: "CDC-MIDATL", node_type: "cdc", forecast_qty: 1600, on_hand: 720, safety_stock: 400, weeks_of_cover: 2.0, stockout_risk: "Low", demand_class: "A" },
+  { id: "w1", sku: "WATER", location: "STORE-001", alert_id: "ALERT-INV-STOCKOUT-001", node_type: "store", forecast_qty: 840, on_hand: 420, safety_stock: 200, weeks_of_cover: 2.5, stockout_risk: "Low", demand_class: "A" },
+  { id: "w2", sku: "WATER", location: "STORE-002", alert_id: "ALERT-INV-STOCKOUT-002", node_type: "store", forecast_qty: 660, on_hand: 280, safety_stock: 180, weeks_of_cover: 2.0, stockout_risk: "Warning", demand_class: "A" },
+  { id: "w3", sku: "WATER", location: "RDC-001", alert_id: "ALERT-INV-LOW-001", node_type: "rdc", forecast_qty: 2400, on_hand: 1100, safety_stock: 600, weeks_of_cover: 2.1, stockout_risk: "Low", demand_class: "A" },
+  { id: "w4", sku: "WATER", location: "RDC-002", alert_id: "ALERT-NODE-001", node_type: "rdc", forecast_qty: 480, on_hand: 190, safety_stock: 120, weeks_of_cover: 1.8, stockout_risk: "Warning", demand_class: "B" },
+  { id: "w5", sku: "WATER", location: "CDC-001", alert_id: "ALERT-SKU-001", node_type: "cdc", forecast_qty: 1600, on_hand: 720, safety_stock: 400, weeks_of_cover: 2.0, stockout_risk: "Low", demand_class: "A" },
 ];
 
 // Demo data: Excess inventory / margin impact (excess_qty, margin_impact_pct)
 const DEMO_EXCESS_MARGIN: SkuLocationRow[] = [
-  { id: "e1", sku: "SKU-301", location: "STORE-NYC-01", node_type: "store", forecast_qty: 200, on_hand: 580, safety_stock: 80, weeks_of_cover: 12.0, stockout_risk: "None", demand_class: "C", excess_qty: 380, margin_impact_pct: -4.2 },
-  { id: "e2", sku: "SKU-302", location: "RDC-NORTHEAST", node_type: "rdc", forecast_qty: 800, on_hand: 2100, safety_stock: 400, weeks_of_cover: 9.5, stockout_risk: "None", demand_class: "B", excess_qty: 1300, margin_impact_pct: -3.8 },
-  { id: "e3", sku: "SKU-303", location: "STORE-PHL-01", node_type: "store", forecast_qty: 150, on_hand: 420, safety_stock: 60, weeks_of_cover: 10.2, stockout_risk: "None", demand_class: "C", excess_qty: 270, margin_impact_pct: -5.1 },
-  { id: "e4", sku: "SKU-301", location: "CDC-MIDATL", node_type: "cdc", forecast_qty: 600, on_hand: 1450, safety_stock: 250, weeks_of_cover: 8.1, stockout_risk: "None", demand_class: "B", excess_qty: 850, margin_impact_pct: -2.9 },
-  { id: "e5", sku: "SKU-304", location: "STORE-BOS-02", node_type: "store", forecast_qty: 180, on_hand: 510, safety_stock: 70, weeks_of_cover: 10.5, stockout_risk: "None", demand_class: "C", excess_qty: 330, margin_impact_pct: -4.6 },
+  { id: "e1", sku: "SNACK-003", location: "STORE-021", alert_id: "ALERT-021", node_type: "store", forecast_qty: 220, on_hand: 610, safety_stock: 85, weeks_of_cover: 11.8, stockout_risk: "None", demand_class: "C", excess_qty: 390, margin_impact_pct: -4.1 },
+  { id: "e2", sku: "SNACK-003", location: "RDC-003", alert_id: "ALERT-SKUNODE-001", node_type: "rdc", forecast_qty: 780, on_hand: 2060, safety_stock: 410, weeks_of_cover: 9.2, stockout_risk: "None", demand_class: "B", excess_qty: 1280, margin_impact_pct: -3.7 },
+  { id: "e3", sku: "BAR-002", location: "STORE-004", alert_id: "ALERT-009", node_type: "store", forecast_qty: 170, on_hand: 440, safety_stock: 65, weeks_of_cover: 9.8, stockout_risk: "None", demand_class: "C", excess_qty: 270, margin_impact_pct: -5.0 },
+  { id: "e4", sku: "BAR-002", location: "CDC-001", alert_id: "ALERT-NODE-001", node_type: "cdc", forecast_qty: 610, on_hand: 1480, safety_stock: 260, weeks_of_cover: 8.0, stockout_risk: "None", demand_class: "B", excess_qty: 870, margin_impact_pct: -2.8 },
+  { id: "e5", sku: "CEREAL-005", location: "STORE-015", alert_id: "ALERT-015", node_type: "store", forecast_qty: 190, on_hand: 520, safety_stock: 75, weeks_of_cover: 10.1, stockout_risk: "None", demand_class: "C", excess_qty: 330, margin_impact_pct: -4.5 },
 ];
 
 const DEMO_SKU_LOCATION_ROWS: SkuLocationRow[] = DEMO_STOCKOUTS_6W;
@@ -145,10 +147,10 @@ function getChooseOptionMessageForQuestionType(type: QuestionType): string {
 }
 
 const DEMO_NEIGHBOUR_OPTIONS = [
-  { id: "n1", name: "RDC-NORTHEAST", type: "RDC", available_qty: 450, transit_days: 2 },
-  { id: "n2", name: "STORE-NYC-02", type: "Store", available_qty: 120, transit_days: 1 },
-  { id: "n3", name: "CDC-MIDATL", type: "CDC", available_qty: 600, transit_days: 3 },
-  { id: "n4", name: "STORE-BOS-01", type: "Store", available_qty: 80, transit_days: 1 },
+  { id: "n1", name: "RDC-001", type: "RDC", available_qty: 450, transit_days: 2 },
+  { id: "n2", name: "RDC-002", type: "RDC", available_qty: 320, transit_days: 2 },
+  { id: "n3", name: "CDC-001", type: "CDC", available_qty: 600, transit_days: 3 },
+  { id: "n4", name: "STORE-002", type: "Store", available_qty: 120, transit_days: 1 },
 ];
 
 type AgentStepId =
@@ -242,6 +244,91 @@ export default function InventoryDiagnosticAgent() {
     const t = setTimeout(fn, ms);
     return () => clearTimeout(t);
   }, []);
+
+  const createStockTransferOrdersFromSelection = useCallback(async (): Promise<string[]> => {
+    const selectedRowIdSet = new Set(selectedRowIds.map((item) => String(item)));
+    const selectedRows = gridRows.filter((row) => selectedRowIdSet.has(String(row.id)));
+    if (selectedRows.length === 0) {
+      throw new Error("Select at least one SKU/location before creating a stock transfer order.");
+    }
+    const selectedSourceIdSet = new Set(selectedNeighbourIds.map((item) => String(item)));
+    const selectedSources = DEMO_NEIGHBOUR_OPTIONS.filter((row) => selectedSourceIdSet.has(String(row.id)));
+    if (selectedSources.length === 0) {
+      throw new Error("Select at least one source node before creating a stock transfer order.");
+    }
+
+    const primarySource = selectedSources[0];
+    let knownAlerts: Array<{ alert_id?: string | null; impacted_node_id?: string | null }> = [];
+    try {
+      const alertSnapshot = await fetchDemoAlerts();
+      knownAlerts = [...(alertSnapshot.active ?? []), ...(alertSnapshot.archived ?? [])];
+    } catch {
+      // Keep the order flow resilient even if alert lookup endpoint is temporarily unavailable.
+      knownAlerts = [];
+    }
+    const validAlertIds = new Set(knownAlerts.map((row) => String(row.alert_id || "").trim()).filter(Boolean));
+    const createdOrderIds: string[] = [];
+
+    for (const row of selectedRows) {
+      const requestedAlertId = String(row.alert_id || "").trim();
+      let fallbackAlertId = "";
+      try {
+        const projectionAlerts = await fetchProjectedInventoryAlerts(row.sku, row.location);
+        const activeProjectionAlert = projectionAlerts.find((item) => String(item.status || "active").toLowerCase() !== "archived");
+        fallbackAlertId = String(activeProjectionAlert?.alert_id || projectionAlerts[0]?.alert_id || "").trim();
+      } catch {
+        fallbackAlertId = "";
+      }
+      const nodeMatchedAlertId = String(
+        knownAlerts.find((item) => String(item.impacted_node_id || "").trim() === row.location)?.alert_id || "",
+      ).trim();
+      const defaultAlertId = "ALERT-NODE-001";
+      const alertId = (
+        [requestedAlertId, fallbackAlertId, nodeMatchedAlertId, defaultAlertId].find((item) => {
+          if (!item) return false;
+          if (validAlertIds.size === 0) return true;
+          return validAlertIds.has(item);
+        }) || defaultAlertId
+      ).trim();
+      if (!alertId) {
+        throw new Error(`No valid alert found for ${row.sku} @ ${row.location}.`);
+      }
+
+      const shortageQty = Math.max(
+        50,
+        Math.ceil(Math.max(row.safety_stock - row.on_hand, row.forecast_qty * 0.2)),
+      );
+      const eta = new Date();
+      eta.setDate(eta.getDate() + Math.max(1, Number(primarySource.transit_days) || 2));
+
+      const created = await createReplenishmentOrder({
+        alert_id: alertId,
+        order_type: "Stock Transfer",
+        status: "created",
+        is_exception: true,
+        exception_reason: "service_risk",
+        alert_action_taken: "agent_stock_transfer_order",
+        order_created_by: "agent",
+        ship_to_node_id: row.location,
+        ship_from_node_id: primarySource.name,
+        eta: eta.toISOString().slice(0, 10),
+        order_cost: Number((shortageQty * 3.5).toFixed(2)),
+        lead_time_days: Number(primarySource.transit_days) || 2,
+        logistics_impact: "medium",
+        update_possible: true,
+        details: [
+          {
+            sku: row.sku,
+            order_qty: shortageQty,
+            ship_to_node_id: row.location,
+            ship_from_node_id: primarySource.name,
+          },
+        ],
+      });
+      createdOrderIds.push(created.order_id);
+    }
+    return createdOrderIds;
+  }, [gridRows, selectedNeighbourIds, selectedRowIds]);
 
   const handleSubmitPrompt = useCallback(() => {
     const q = prompt.trim();
@@ -338,15 +425,29 @@ export default function InventoryDiagnosticAgent() {
   }, [selectedNeighbourIds.length, addMessage]);
 
   const handleVendorChoice = useCallback(
-    (choice: "yes" | "no") => {
+    async (choice: "yes" | "no") => {
       setVendorChoice(choice);
       setStepSelections((prev) => ({ ...prev, vendor_question: choice === "yes" ? "Yes" : "No" }));
       addMessage("user", choice === "yes" ? "Yes, check vendor." : "No, create the Stock Transfer Order.");
 
       if (choice === "no") {
-        addMessage("assistant", "Creating Stock Transfer Order for the selected sources... Done. Created a Stock transfer order from a RDC.");
+        addMessage("assistant", "Creating Stock Transfer Order for the selected sources...");
+        setLoading(true);
+        try {
+          const createdOrderIds = await createStockTransferOrdersFromSelection();
+          addMessage(
+            "assistant",
+            `Done. Created ${createdOrderIds.length} stock transfer order(s): ${createdOrderIds.join(", ")}.`,
+          );
+          setFlowEndMessage(`Created ${createdOrderIds.length} stock transfer order(s): ${createdOrderIds.join(", ")}.`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to create stock transfer order.";
+          addMessage("assistant", `Unable to create stock transfer order: ${message}`);
+          setFlowEndMessage(`Unable to create stock transfer order: ${message}`);
+        } finally {
+          setLoading(false);
+        }
         setCurrentStepId("flow_complete");
-        setFlowEndMessage("Created a Stock transfer order from a RDC.");
       } else {
         addMessage("assistant", "Checking vendor options for cost comparison...");
         setLoading(true);
@@ -361,11 +462,11 @@ export default function InventoryDiagnosticAgent() {
         });
       }
     },
-    [addMessage, runAfterDelay],
+    [addMessage, createStockTransferOrdersFromSelection, runAfterDelay],
   );
 
   const handlePoConfirm = useCallback(
-    (choice: "yes" | "no") => {
+    async (choice: "yes" | "no") => {
       setPoConfirmChoice(choice);
       setStepSelections((prev) => ({ ...prev, po_confirm: choice === "yes" ? "Yes (PO)" : "No (STO)" }));
       addMessage("user", choice === "yes" ? "Yes, create PO." : "No, create Stock Transfer instead.");
@@ -374,12 +475,26 @@ export default function InventoryDiagnosticAgent() {
         addMessage("assistant", "Creating Purchase Order to Vendor V001... Done. Your PO has been created.");
         setFlowEndMessage("Purchase Order to Vendor V001 created successfully.");
       } else {
-        addMessage("assistant", "Creating Stock Transfer Order instead... Done. Created a Stock transfer order from a RDC.");
-        setFlowEndMessage("Created a Stock transfer order from a RDC.");
+        addMessage("assistant", "Creating Stock Transfer Order instead...");
+        setLoading(true);
+        try {
+          const createdOrderIds = await createStockTransferOrdersFromSelection();
+          addMessage(
+            "assistant",
+            `Done. Created ${createdOrderIds.length} stock transfer order(s): ${createdOrderIds.join(", ")}.`,
+          );
+          setFlowEndMessage(`Created ${createdOrderIds.length} stock transfer order(s): ${createdOrderIds.join(", ")}.`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to create stock transfer order.";
+          addMessage("assistant", `Unable to create stock transfer order: ${message}`);
+          setFlowEndMessage(`Unable to create stock transfer order: ${message}`);
+        } finally {
+          setLoading(false);
+        }
       }
       setCurrentStepId("flow_complete");
     },
-    [addMessage],
+    [addMessage, createStockTransferOrdersFromSelection],
   );
 
   const handleScenarioSubmit = useCallback(() => {
