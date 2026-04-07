@@ -1,20 +1,39 @@
-#Node
+# Node
 node_modules/
 frontend/node_modules/
-frntend/dist/
+frontend/dist/
 frontend/release/
+
+# Electron / PyInstaller build artifacts
 backend/dist-electron/
-backend/build/
-backend/*.spec
+backend/dist-electron-x64/
+backend/dist-electron-arm64/
+build/
 release/
+*.spec
+!backend-api.spec
+
+# macOS
 .DS_Store
 
-# Pythin
+# Python
 __pycache__/
 *.pyc
 *.pyo
+.env
 .env/
 venv/
-backend/.venv/
+.venv*/
+backend/.venv*/
 backend/__pycache__/
-build/
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Database runtime
+*.runtime.db
+
+# Temp
+*.log

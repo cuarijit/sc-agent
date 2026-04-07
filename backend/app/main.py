@@ -87,7 +87,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="MEIO Inventory Optimization API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Inventory Planning and Optimization API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 

@@ -23,7 +23,7 @@ OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages"
 CHAT_SESSION_LIMIT = 32
 MAX_ROWS = 2000
-OUT_OF_SCOPE_MESSAGE = "I can only help with questions about the MEIO database."
+OUT_OF_SCOPE_MESSAGE = "I can only help with questions about the Inventory Planning and Optimization database."
 
 BANNED_SQL_TOKENS = {
     "insert",
@@ -482,9 +482,9 @@ def _schema_hint(schema: dict[str, list[str]]) -> str:
 
 def _latency_scope_guidance() -> str:
     return (
-        "Scope: Only handle questions answerable from this MEIO database. "
+        "Scope: Only handle questions answerable from this Inventory Planning and Optimization database. "
         "LATENCY MODE (MANDATORY): Do not greet. "
-        "For in-scope database questions, first action must be exactly one call to meio.db. "
+        "For in-scope database questions, first action must be exactly one call to asc.db. "
         "Do not ask clarifying questions before first query unless impossible to map to schema. "
         "Never SELECT *; select only required columns. "
         "If LIMIT is needed, use LIMIT 2000 by default unless user explicitly asks for fewer rows. "

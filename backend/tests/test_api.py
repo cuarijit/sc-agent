@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("MEIO_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
+    monkeypatch.setenv("ASC_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
     from backend.app.main import app
 
     with TestClient(app) as test_client:

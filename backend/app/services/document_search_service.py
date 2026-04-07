@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from ..models import Document
 
 
-ES_URL = os.getenv("MEIO_ELASTICSEARCH_URL", "http://localhost:9200")
-ES_INDEX = os.getenv("MEIO_ELASTICSEARCH_INDEX", "meio-documents")
+ES_URL = os.getenv("ASC_ELASTICSEARCH_URL", "http://localhost:9200")
+ES_INDEX = os.getenv("ASC_ELASTICSEARCH_INDEX", "asc-documents")
 
 
 def _client() -> Elasticsearch:

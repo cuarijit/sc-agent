@@ -91,7 +91,7 @@ export default function GlobalFilterChatbotModal({
   showApplyToGlobalFilter = true,
   embedded = false,
   enableCharts = false,
-  assistantMode = "meio-data-assistant",
+  assistantMode = "asc-data-assistant",
   defaultGridCollapsed = false,
 }: {
   open: boolean;

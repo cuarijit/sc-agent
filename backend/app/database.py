@@ -10,9 +10,9 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_DB_PATH = BASE_DIR / "data" / "meio.db"
-FALLBACK_DB_PATH = BASE_DIR / "data" / "meio.runtime.db"
-TEMP_DB_PATH = Path(tempfile.gettempdir()) / "meio.runtime.db"
+DEFAULT_DB_PATH = BASE_DIR / "data" / "asc.db"
+FALLBACK_DB_PATH = BASE_DIR / "data" / "asc.runtime.db"
+TEMP_DB_PATH = Path(tempfile.gettempdir()) / "asc.runtime.db"
 
 
 def _sqlite_url_from_path(path: Path) -> str:
@@ -54,13 +54,13 @@ def _sqlite_file_writable(path: Path) -> bool:
 
 
 def _resolve_database_url() -> str:
-    override_path = os.getenv("MEIO_DATABASE_PATH")
+    override_path = os.getenv("ASC_DATABASE_PATH")
     if override_path:
         path = Path(override_path).expanduser()
         if _sqlite_file_writable(path):
             return _sqlite_url_from_path(path)
 
-    override = os.getenv("MEIO_DATABASE_URL")
+    override = os.getenv("ASC_DATABASE_URL")
     if override:
         override_path = _path_from_sqlite_url(override)
         if override_path:

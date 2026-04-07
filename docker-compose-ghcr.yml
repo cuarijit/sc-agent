@@ -1,0 +1,20 @@
+services:
+  backend:
+    image: ghcr.io/cuarijit/scp-backend:latest
+    environment:
+      - ASC_DATABASE_PATH=/app/backend/data/asc.db
+      - ASC_SEED_DIR=/app/backend/data/seed
+    volumes:
+      - backend-data:/app/backend/data
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/cuarijit/scp-frontend:latest
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+volumes:
+  backend-data:

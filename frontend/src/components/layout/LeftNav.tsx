@@ -70,7 +70,7 @@ export default function LeftNav({
     [location.pathname],
   );
   const [selectedModuleId, setSelectedModuleId] = useState<string>(() => {
-    const stored = localStorage.getItem("meio_selected_module_id");
+    const stored = localStorage.getItem("asc_selected_module_id");
     return stored && NAV_MODULES.some((module) => module.id === stored) ? stored : routeModuleId;
   });
   const [moduleAnchorEl, setModuleAnchorEl] = useState<HTMLElement | null>(null);
@@ -83,7 +83,7 @@ export default function LeftNav({
 
   useEffect(() => {
     if (!selectedModuleId) return;
-    localStorage.setItem("meio_selected_module_id", selectedModuleId);
+    localStorage.setItem("asc_selected_module_id", selectedModuleId);
   }, [selectedModuleId]);
 
   const selectedModule = NAV_MODULES.find((module) => module.id === selectedModuleId) ?? NAV_MODULES[0];

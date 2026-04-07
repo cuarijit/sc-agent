@@ -13,7 +13,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
-      - MEIO_ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ASC_ELASTICSEARCH_URL=http://elasticsearch:9200
     ports:
       - "8000:8000"
     volumes:

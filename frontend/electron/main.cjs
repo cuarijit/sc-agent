@@ -68,20 +68,20 @@ function ensureDatabaseFile(filePath, sourcePath = "") {
 }
 
 function ensureRuntimeDatabase() {
-  const explicitDbPath = process.env.MEIO_DESKTOP_DB_PATH || process.env.MEIO_DATABASE_PATH;
+  const explicitDbPath = process.env.ASC_DESKTOP_DB_PATH || process.env.ASC_DATABASE_PATH;
   if (explicitDbPath) {
     return ensureDatabaseFile(path.resolve(explicitDbPath));
   }
 
   if (!app.isPackaged) {
-    const repoRuntimePath = path.resolve(__dirname, "..", "..", "backend", "data", "meio.runtime.db");
+    const repoRuntimePath = path.resolve(__dirname, "..", "..", "backend", "data", "asc.runtime.db");
     return ensureDatabaseFile(repoRuntimePath);
   }
 
   const userDataDir = app.getPath("userData");
   const runtimeDataDir = path.join(userDataDir, "backend-data");
-  const runtimeDbPath = path.join(runtimeDataDir, "meio.runtime.db");
-  const bundledRuntimeDbPath = path.join(process.resourcesPath, "backend", "data", "meio.runtime.db");
+  const runtimeDbPath = path.join(runtimeDataDir, "asc.runtime.db");
+  const bundledRuntimeDbPath = path.join(process.resourcesPath, "backend", "data", "asc.runtime.db");
   return ensureDatabaseFile(runtimeDbPath, bundledRuntimeDbPath);
 }
 
@@ -95,13 +95,13 @@ function startBackend() {
   }
   const env = {
     ...process.env,
-    MEIO_DATABASE_URL: toSqliteUrl(runtimeDbPath),
-    MEIO_DATABASE_PATH: runtimeDbPath,
-    MEIO_SEED_DIR: app.isPackaged
+    ASC_DATABASE_URL: toSqliteUrl(runtimeDbPath),
+    ASC_DATABASE_PATH: runtimeDbPath,
+    ASC_SEED_DIR: app.isPackaged
       ? path.join(process.resourcesPath, "backend", "data", "seed")
       : path.join(__dirname, "..", "..", "backend", "data", "seed"),
-    MEIO_API_HOST: API_HOST,
-    MEIO_API_PORT: String(API_PORT),
+    ASC_API_HOST: API_HOST,
+    ASC_API_PORT: String(API_PORT),
   };
 
   if (app.isPackaged) {

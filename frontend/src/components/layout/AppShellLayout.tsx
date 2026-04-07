@@ -80,7 +80,7 @@ export default function AppShellLayout() {
   const [infoOpen, setInfoOpen] = useState(false);
   const [llmApiKeys, setLlmApiKeys] = useState<Record<string, string>>({});
   const [config, setConfig] = useState<UiConfig>(() => {
-    const raw = localStorage.getItem("meio_ui_config");
+    const raw = localStorage.getItem("asc_ui_config");
     return raw ? JSON.parse(raw) as UiConfig : { llmProvider: "openai", llmModel: "gpt-4.1-mini" };
   });
   const openAiApiKey = llmApiKeys[config.llmProvider] ?? "";
@@ -326,7 +326,7 @@ export default function AppShellLayout() {
   }, [themeMode]);
 
   useEffect(() => {
-    localStorage.setItem("meio_ui_config", JSON.stringify(config));
+    localStorage.setItem("asc_ui_config", JSON.stringify(config));
   }, [config]);
 
   const showGlobalFilterBar = true;

@@ -63,7 +63,7 @@ from ..models import (
 )
 
 
-SEED_DIR = Path(os.getenv("MEIO_SEED_DIR", str(Path(__file__).resolve().parents[2] / "data" / "seed")))
+SEED_DIR = Path(os.getenv("ASC_SEED_DIR", str(Path(__file__).resolve().parents[2] / "data" / "seed")))
 
 REQUIRED_TABLE_COLUMNS = {
     "recommendations": {"run_id", "sku", "product_name", "category", "location", "region", "supplier", "status", "action", "eta"},

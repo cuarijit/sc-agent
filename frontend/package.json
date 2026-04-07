@@ -1,6 +1,8 @@
 {
-  "name": "meio-optimization-ui",
-  "version": "0.1.0",
+  "name": "supply-chain-planning",
+  "version": "1.0.0",
+  "description": "Supply Chain Planning and Execution - Intelligent Planning & Smart Execution",
+  "author": "Puls8",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -11,7 +13,7 @@
     "electron:dev": "node scripts/dev-electron.cjs",
     "build:backend": "node scripts/build-backend.cjs",
     "electron:dist:win": "node scripts/guard-platform.cjs win32 && npm run build && npm run build:backend && electron-builder --win nsis --x64",
-    "electron:dist:mac": "node scripts/guard-platform.cjs darwin && npm run build && npm run build:backend && electron-builder --mac dmg zip --x64 --arm64"
+    "electron:dist:mac": "node scripts/guard-platform.cjs darwin && npm run build && npm run build:backend && electron-builder --mac dmg"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -36,8 +38,8 @@
     "vite": "^6.2.0"
   },
   "build": {
-    "appId": "com.supplyplanning.desktop",
-    "productName": "Supply Planning Desktop",
+    "appId": "com.puls8.supplychainplanning",
+    "productName": "Supply Chain Planning",
     "directories": {
       "output": "../release"
     },
@@ -52,8 +54,8 @@
         "to": "backend/backend-api"
       },
       {
-        "from": "../backend/data",
-        "to": "backend/data"
+        "from": "../backend/data/seed",
+        "to": "backend/data/seed"
       }
     ],
     "win": {
@@ -65,10 +67,21 @@
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "category": "public.app-category.business",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
     },
     "nsis": {
       "oneClick": false,

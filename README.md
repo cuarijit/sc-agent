@@ -1,6 +1,6 @@
-# MEIO Inventory Optimization MVP
+# Inventory Planning and Optimization
 
-This workspace contains a scaffolded full-stack MVP for a planner-facing MEIO application.
+This workspace contains a scaffolded full-stack MVP for a planner-facing Inventory Planning and Optimization application.
 
 ## Backend
 

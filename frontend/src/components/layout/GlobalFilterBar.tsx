@@ -230,7 +230,7 @@ export default function GlobalFilterBar({
         setFilters={setFilters}
         config={config}
         openAiApiKey={openAiApiKey}
-        assistantMode="meio-data-assistant"
+        assistantMode="asc-data-assistant"
         defaultGridCollapsed
       />
     </Paper>
