@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Supply Chain Planning and Execution - Intelligent Planning & Smart Execution",
   "author": "Puls8",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cuarijit/sc-agent.git"
+  },
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
