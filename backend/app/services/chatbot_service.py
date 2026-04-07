@@ -1227,15 +1227,6 @@ class ChatbotService:
         warnings = list(state.get("warnings", []))
         columns = state.get("columns", [])
         rows = state.get("rows", [])
-        if not _is_aggregate_query(state["sql"]):
-            has_link_in_schema = any(
-                "link" in (column or "").lower()
-                for table_columns in _sqlite_schema().values()
-                for column in table_columns
-            )
-            has_link_in_result = any("link" in (column or "").lower() for column in columns)
-            if has_link_in_schema and not has_link_in_result:
-                warnings.append("Result does not include Link column for detail/list output.")
         apply_filters = _extract_apply_filters(columns, rows)
         apply_candidates = _extract_apply_candidates(columns, rows)
         can_apply = bool(apply_filters)

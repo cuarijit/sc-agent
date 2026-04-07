@@ -8,6 +8,15 @@ import AppShellLayout from "./components/layout/AppShellLayout";
 import AgentConfigurationPage from "./pages/AgentConfigurationPage";
 import DashboardPage from "./pages/DashboardPage";
 import DemandAnalysisPlaceholderPage from "./pages/DemandAnalysisPlaceholderPage";
+import DemandForecastingPage from "./pages/DemandForecastingPage";
+import DemandCollaborativePage from "./pages/DemandCollaborativePage";
+import DemandAccuracyPage from "./pages/DemandAccuracyPage";
+import DemandSopPage from "./pages/DemandSopPage";
+import DemandSupplyIntegrationPage from "./pages/DemandSupplyIntegrationPage";
+import DemandFinancialPage from "./pages/DemandFinancialPage";
+import DemandTradePromotionPage from "./pages/DemandTradePromotionPage";
+import DemandAnalyticsPage from "./pages/DemandAnalyticsPage";
+import DemandCustomersPage from "./pages/DemandCustomersPage";
 import ReplenishmentPage from "./pages/ReplenishmentPage";
 import RecommendationsPage from "./pages/RecommendationsPage";
 import ScenarioPage from "./pages/ScenarioPage";
@@ -77,6 +86,15 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/" element={<DashboardPage />} />
             <Route path="/demand/forecast-alerts" element={<DemandAnalysisPlaceholderPage title="Forecast Alerts" />} />
             <Route path="/demand/forecast-modification" element={<DemandAnalysisPlaceholderPage title="Forecast Modification" />} />
+            <Route path="/demand/forecasting" element={<DemandForecastingPage />} />
+            <Route path="/demand/accuracy" element={<DemandAccuracyPage />} />
+            <Route path="/demand/collaborative" element={<DemandCollaborativePage />} />
+            <Route path="/demand/sop" element={<DemandSopPage />} />
+            <Route path="/demand/supply-integration" element={<DemandSupplyIntegrationPage />} />
+            <Route path="/demand/trade-promotion" element={<DemandTradePromotionPage />} />
+            <Route path="/demand/financial" element={<DemandFinancialPage />} />
+            <Route path="/demand/analytics" element={<DemandAnalyticsPage />} />
+            <Route path="/demand/customers" element={<DemandCustomersPage />} />
             <Route path="/agentic-ai/agent-configuration" element={<AgentConfigurationPage />} />
             <Route
               path="/replenishment"

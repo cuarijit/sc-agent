@@ -544,3 +544,166 @@ class DocumentChunk(Base):
     keyword_blob: Mapped[str] = mapped_column(Text)
 
     document: Mapped["Document"] = relationship(back_populates="chunks")
+
+
+# ---------------------------------------------------------------------------
+# Demand Planning / IBP models
+# ---------------------------------------------------------------------------
+
+class DemandForecast(Base):
+    __tablename__ = "demand_forecast"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    location: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    baseline_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    promo_lift_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    consensus_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    final_forecast_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    actual_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    forecast_source: Mapped[str] = mapped_column(String, default="statistical")
+    updated_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    updated_at: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class DemandPromotion(Base):
+    __tablename__ = "demand_promotions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    promo_id: Mapped[str] = mapped_column(String, index=True)
+    promo_name: Mapped[str] = mapped_column(String)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    location: Mapped[str] = mapped_column(String, index=True)
+    customer: Mapped[str] = mapped_column(String, index=True)
+    customer_type: Mapped[str] = mapped_column(String, default="direct")
+    channel: Mapped[str] = mapped_column(String, default="retail")
+    start_week: Mapped[str] = mapped_column(String)
+    end_week: Mapped[str] = mapped_column(String)
+    base_volume: Mapped[float] = mapped_column(Float, default=0.0)
+    lift_percent: Mapped[float] = mapped_column(Float, default=0.0)
+    lift_volume: Mapped[float] = mapped_column(Float, default=0.0)
+    trade_spend: Mapped[float] = mapped_column(Float, default=0.0)
+    roi: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String, default="planned", index=True)
+    syndicated_source: Mapped[str | None] = mapped_column(String, nullable=True)
+    historical_performance: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class DemandConsensusEntry(Base):
+    __tablename__ = "demand_consensus_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cycle_id: Mapped[str] = mapped_column(String, index=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    location: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    sales_input: Mapped[float] = mapped_column(Float, default=0.0)
+    customer_input: Mapped[float] = mapped_column(Float, default=0.0)
+    supply_chain_input: Mapped[float] = mapped_column(Float, default=0.0)
+    marketing_input: Mapped[float] = mapped_column(Float, default=0.0)
+    consensus_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    variance_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String, default="draft", index=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class DemandForecastAccuracy(Base):
+    __tablename__ = "demand_forecast_accuracy"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    location: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    forecast_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    actual_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    mape: Mapped[float] = mapped_column(Float, default=0.0)
+    bias: Mapped[float] = mapped_column(Float, default=0.0)
+    wmape: Mapped[float] = mapped_column(Float, default=0.0)
+    tracking_signal: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class DemandException(Base):
+    __tablename__ = "demand_exceptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    exception_id: Mapped[str] = mapped_column(String, index=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    location: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String)
+    exception_type: Mapped[str] = mapped_column(String, index=True)
+    severity: Mapped[str] = mapped_column(String, default="medium")
+    deviation_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    forecast_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    actual_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    root_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="open", index=True)
+    assigned_to: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String)
+
+
+class SopCycle(Base):
+    __tablename__ = "sop_cycles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cycle_id: Mapped[str] = mapped_column(String, index=True)
+    cycle_name: Mapped[str] = mapped_column(String)
+    cycle_month: Mapped[str] = mapped_column(String, index=True)
+    status: Mapped[str] = mapped_column(String, default="planning", index=True)
+    demand_review_date: Mapped[str | None] = mapped_column(String, nullable=True)
+    supply_review_date: Mapped[str | None] = mapped_column(String, nullable=True)
+    pre_sop_date: Mapped[str | None] = mapped_column(String, nullable=True)
+    exec_sop_date: Mapped[str | None] = mapped_column(String, nullable=True)
+    consensus_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class SopReviewItem(Base):
+    __tablename__ = "sop_review_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cycle_id: Mapped[str] = mapped_column(String, index=True)
+    review_type: Mapped[str] = mapped_column(String, index=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    location: Mapped[str] = mapped_column(String, index=True)
+    topic: Mapped[str] = mapped_column(String)
+    gap_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    action_required: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="open", index=True)
+    due_date: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class FinancialPlan(Base):
+    __tablename__ = "financial_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    location: Mapped[str] = mapped_column(String, index=True)
+    month: Mapped[str] = mapped_column(String, index=True)
+    volume_units: Mapped[float] = mapped_column(Float, default=0.0)
+    revenue: Mapped[float] = mapped_column(Float, default=0.0)
+    cogs: Mapped[float] = mapped_column(Float, default=0.0)
+    gross_margin: Mapped[float] = mapped_column(Float, default=0.0)
+    margin_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    trade_spend: Mapped[float] = mapped_column(Float, default=0.0)
+    net_revenue: Mapped[float] = mapped_column(Float, default=0.0)
+    plan_type: Mapped[str] = mapped_column(String, default="forecast", index=True)
+    version: Mapped[str] = mapped_column(String, default="working")
+
+
+class CustomerHierarchy(Base):
+    __tablename__ = "customer_hierarchy"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_id: Mapped[str] = mapped_column(String, index=True)
+    customer_name: Mapped[str] = mapped_column(String)
+    parent_customer_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    customer_type: Mapped[str] = mapped_column(String, index=True)
+    channel: Mapped[str] = mapped_column(String, default="retail")
+    region: Mapped[str] = mapped_column(String, index=True)
+    bill_to: Mapped[str | None] = mapped_column(String, nullable=True)
+    sold_to: Mapped[str | None] = mapped_column(String, nullable=True)
+    planning_level: Mapped[str] = mapped_column(String, default="direct")

@@ -3,7 +3,7 @@
 
 a = Analysis(
     ['backend/app/server_entry.py'],
-    pathex=['/Users/arijitchoudhuri/zebra/scp-0312'],
+    pathex=['.'],
     binaries=[],
     datas=[],
     hiddenimports=[],

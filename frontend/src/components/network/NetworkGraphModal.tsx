@@ -1,5 +1,4 @@
 import FitScreenOutlinedIcon from "@mui/icons-material/FitScreenOutlined";
-import HubOutlinedIcon from "@mui/icons-material/HubOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import ZoomInOutlinedIcon from "@mui/icons-material/ZoomInOutlined";
 import ZoomOutOutlinedIcon from "@mui/icons-material/ZoomOutOutlined";
@@ -230,12 +229,11 @@ export default function NetworkGraphModal({
     <Dialog
       open={open}
       onClose={onClose}
-      fullWidth
-      maxWidth="xl"
-      slotProps={{ paper: { sx: { width: "96vw", maxWidth: "96vw", height: "92vh", display: "flex", flexDirection: "column" } } }}
+      fullScreen
+      slotProps={{ paper: { sx: { display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" } } }}
     >
-      <DialogTitle>Supply Chain Network Graph</DialogTitle>
-      <DialogContent dividers sx={{ p: 1.25, flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 0.8 }}>
+      <DialogTitle sx={{ flexShrink: 0, py: 1 }}>Supply Chain Network Graph</DialogTitle>
+      <DialogContent dividers sx={{ p: 1.25, flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 0.8, overflow: "hidden" }}>
         {!normalizedSku ? (
           <Typography variant="body2" color="text.secondary">No SKU provided for graph rendering.</Typography>
         ) : (
@@ -257,11 +255,11 @@ export default function NetworkGraphModal({
                 <Tooltip title="Fit to view"><IconButton size="small" onClick={fitToView}><FitScreenOutlinedIcon fontSize="small" /></IconButton></Tooltip>
               </Stack>
             </Stack>
-            <Box sx={{ position: "relative", flex: 1, minHeight: 0 }}>
+            <Box sx={{ position: "relative", flex: 1, minHeight: 0, overflow: "hidden" }}>
               <div
                 ref={canvasRef}
                 className="network-canvas-wrapper"
-                style={{ height: "100%", minHeight: 0 }}
+                style={{ height: "100%", minHeight: 0, maxHeight: "none", overflow: "auto" }}
                 onScroll={(event) => {
                   const el = event.currentTarget;
                   setViewport({ left: el.scrollLeft, top: el.scrollTop, width: el.clientWidth, height: el.clientHeight });
@@ -341,7 +339,7 @@ export default function NetworkGraphModal({
                               ? "SUP"
                               : "N";
                     const nodeAlertMeta = graphNodeAlertSummary?.[node.id] ?? { count: 0, severity: "info" as const };
-                    const hasAlert = nodeAlertMeta.count > 0;
+                    const alertCount = Math.max(0, Number(nodeAlertMeta.count) || 0);
                     const nodeSeverity = nodeAlertMeta.severity;
                     return (
                       <Box key={node.id} className={`network-node-card ${typeClass}`} style={{ left, top, width: w, minHeight: h }}>
@@ -351,8 +349,7 @@ export default function NetworkGraphModal({
                         </Typography>
                         <Box className="network-node-type-badge">{typeBadge}</Box>
                         <Stack direction="row" spacing={0.3} sx={{ mt: 0.55, alignItems: "center" }}>
-                          <HubOutlinedIcon sx={{ fontSize: 12, color: "text.secondary" }} />
-                          <Tooltip title={`Open projected inventory (direct alerts only: ${nodeAlertMeta.count})`}>
+                          <Tooltip title={`Open projected inventory (direct alerts: ${alertCount}, severity: ${nodeSeverity})`}>
                             <IconButton
                               size="small"
                               color="primary"
@@ -361,6 +358,7 @@ export default function NetworkGraphModal({
                                 borderColor: "primary.light",
                                 bgcolor: "rgba(59,130,246,0.10)",
                                 p: 0.3,
+                                position: "relative",
                               }}
                               onClick={(event) => {
                                 event.stopPropagation();
@@ -369,27 +367,36 @@ export default function NetworkGraphModal({
                               }}
                             >
                               <Inventory2OutlinedIcon sx={{ fontSize: 11 }} />
-                              {hasAlert ? (
-                                <Box
-                                  component="span"
-                                  sx={{
-                                    position: "absolute",
-                                    top: -5,
-                                    right: -4,
-                                    minWidth: 13,
-                                    height: 13,
-                                    px: 0.3,
-                                    borderRadius: 6,
-                                    bgcolor: nodeSeverity === "critical" ? "error.main" : nodeSeverity === "warning" ? "warning.main" : "grey.600",
-                                    color: "#fff",
-                                    fontSize: 9,
-                                    lineHeight: "13px",
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {nodeAlertMeta.count}
-                                </Box>
-                              ) : null}
+                              <Typography component="span" sx={{ ml: 0.25, fontSize: 7.8, fontWeight: 800, lineHeight: 1 }}>
+                                PI
+                              </Typography>
+                              <Box
+                                component="span"
+                                sx={{
+                                  position: "absolute",
+                                  top: -5,
+                                  right: -4,
+                                  minWidth: 13,
+                                  height: 13,
+                                  px: 0.3,
+                                  borderRadius: 6,
+                                  bgcolor:
+                                    alertCount === 0
+                                      ? "#64748b"
+                                      : nodeSeverity === "critical"
+                                        ? "#dc2626"
+                                        : nodeSeverity === "warning"
+                                          ? "#f97316"
+                                          : "#eab308",
+                                  color: alertCount === 0 || nodeSeverity !== "info" ? "#fff" : "#422006",
+                                  fontSize: 9,
+                                  lineHeight: "13px",
+                                  textAlign: "center",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {alertCount}
+                              </Box>
                             </IconButton>
                           </Tooltip>
                         </Stack>
@@ -402,10 +409,9 @@ export default function NetworkGraphModal({
           </>
         )}
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ flexShrink: 0, py: 0.5 }}>
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
   );
 }
-

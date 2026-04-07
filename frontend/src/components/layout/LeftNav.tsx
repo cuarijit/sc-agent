@@ -1,7 +1,7 @@
 import AppsOutlinedIcon from "@mui/icons-material/AppsOutlined";
 import KeyboardDoubleArrowLeftOutlinedIcon from "@mui/icons-material/KeyboardDoubleArrowLeftOutlined";
 import KeyboardDoubleArrowRightOutlinedIcon from "@mui/icons-material/KeyboardDoubleArrowRightOutlined";
-import { ButtonBase, Menu, MenuItem, Paper, Stack, Tooltip, Typography } from "@mui/material";
+import { Box, ButtonBase, Menu, MenuItem, Stack, Tooltip, Typography } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -47,10 +47,10 @@ function NavButton({
           }
           navigate(item.route);
         }}
-        sx={{ justifyContent: collapsed ? "center" : "flex-start", px: 1, py: 0.8, gap: 0.8 }}
+        sx={{ justifyContent: collapsed ? "center" : "flex-start", px: 1, py: 0.6, gap: 0.8, borderRadius: "6px" }}
       >
         <item.icon fontSize="small" />
-        {!collapsed ? <Typography variant="caption">{item.label}</Typography> : null}
+        {!collapsed ? <Typography variant="caption" sx={{ fontSize: "0.74rem" }}>{item.label}</Typography> : null}
       </ButtonBase>
     </Tooltip>
   );
@@ -89,22 +89,22 @@ export default function LeftNav({
   const selectedModule = NAV_MODULES.find((module) => module.id === selectedModuleId) ?? NAV_MODULES[0];
 
   return (
-    <Paper elevation={0} className={`side-nav ${collapsed ? "side-nav-collapsed" : ""}`}>
-      <Stack spacing={1} sx={{ width: "100%" }}>
+    <Box component="nav" className={`side-nav ${collapsed ? "side-nav-collapsed" : ""}`}>
+      <Stack spacing={0.9} sx={{ width: "100%" }}>
         <Tooltip title={collapsed ? "Expand menu" : "Collapse menu"} placement="right">
-          <ButtonBase className="side-nav-btn" onClick={onToggleCollapsed} sx={{ justifyContent: collapsed ? "center" : "flex-start", px: 1, py: 0.75 }}>
+          <ButtonBase className="side-nav-btn" onClick={onToggleCollapsed} sx={{ justifyContent: collapsed ? "center" : "flex-start", px: 1, py: 0.6, borderRadius: "6px", gap: 0.8 }}>
             {collapsed ? <KeyboardDoubleArrowRightOutlinedIcon fontSize="small" /> : <KeyboardDoubleArrowLeftOutlinedIcon fontSize="small" />}
-            {!collapsed ? <Typography variant="caption">Collapse</Typography> : null}
+            {!collapsed ? <Typography variant="caption" sx={{ fontSize: "0.74rem" }}>Collapse</Typography> : null}
           </ButtonBase>
         </Tooltip>
         <Tooltip title={collapsed ? "Select module" : "Modules"} placement="right">
           <ButtonBase
-            className="side-nav-btn"
+            className="side-nav-btn side-nav-module-btn"
             onClick={(event) => setModuleAnchorEl(event.currentTarget)}
-            sx={{ justifyContent: collapsed ? "center" : "flex-start", px: 1, py: 0.75, gap: 0.8 }}
+            sx={{ justifyContent: collapsed ? "center" : "flex-start", px: 1, py: 0.6, borderRadius: "6px", gap: 0.8 }}
           >
             <AppsOutlinedIcon fontSize="small" />
-            {!collapsed ? <Typography variant="caption">{selectedModule?.label ?? "Modules"}</Typography> : null}
+            {!collapsed ? <Typography variant="caption" sx={{ fontSize: "0.74rem" }}>{selectedModule?.label ?? "Modules"}</Typography> : null}
           </ButtonBase>
         </Tooltip>
         <Menu
@@ -147,19 +147,6 @@ export default function LeftNav({
           ))}
         </Stack>
       </Stack>
-      {!collapsed ? (
-        <Stack spacing={0.6} className="nav-footer">
-          <Typography variant="caption" color="text.secondary">
-            {selectedModule?.label}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            MEIO Copilot
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Deterministic planning with explainable AI guidance
-          </Typography>
-        </Stack>
-      ) : null}
-    </Paper>
+    </Box>
   );
 }

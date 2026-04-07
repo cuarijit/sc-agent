@@ -5,11 +5,11 @@ interface DemandAnalysisPlaceholderPageProps {
   title?: string;
 }
 
-/** Placeholder for Demand Analysis pages; shows "Already developed" as per requirement. */
-export default function DemandAnalysisPlaceholderPage({ title = "Demand Analysis" }: DemandAnalysisPlaceholderPageProps) {
+/** Placeholder for Demand Planning pages; shows "Already developed" as per requirement. */
+export default function DemandAnalysisPlaceholderPage({ title = "Demand Planning" }: DemandAnalysisPlaceholderPageProps) {
   return (
     <div className="page-scroll">
-      <SectionCard title={title} subtitle="Demand Analysis workspace">
+      <SectionCard title={title} subtitle="Demand Planning workspace">
         <Typography variant="body1" color="text.secondary" sx={{ py: 2 }}>
           Already developed
         </Typography>

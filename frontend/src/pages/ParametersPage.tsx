@@ -40,6 +40,7 @@ import { applyParameterRecommendation, bulkApplyParameterValues, fetchParameterE
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
 import { SectionCard } from "../components/shared/UiBits";
+import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import { appendGlobalFilters, globalFiltersKey } from "../types/filters";
 import FilterBuilderDialog from "../components/shared/FilterBuilderDialog";
 import ParameterDiagnosticAgent from "./ParameterDiagnosticAgent";
@@ -74,7 +75,7 @@ function parsePasteRows(input: string, sourceType: string, reason: string) {
 }
 
 export default function ParametersPage() {
-  const { filters } = useOutletContext<ShellContextValue>();
+  const { filters, config } = useOutletContext<ShellContextValue>();
   const navigate = useNavigate();
   const [parameterAgentModalOpen, setParameterAgentModalOpen] = useState(false);
   const [filterDialogOpen, setFilterDialogOpen] = useState(false);
@@ -383,66 +384,21 @@ export default function ParametersPage() {
                 </Stack>
               </Stack>
               {!paramExceptionDashboardCollapsed ? (
-              <div className="alerts-kpi-group-row">
-                <Box className="alerts-kpi-group-card alerts-kpi-critical">
-                  <Box className="alerts-kpi-group-head">
-                    <Box className="alerts-kpi-group-icon">
-                      <WarningAmberOutlinedIcon fontSize="small" />
-                    </Box>
-                    <Typography className="alerts-kpi-group-title">Issues</Typography>
-                  </Box>
-                  <Stack spacing={0.5}>
-                    <Box className="alerts-kpi-line">
-                      <Typography className="alerts-kpi-line-label">Missing</Typography>
-                      <Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.issueCounts.missing}</Typography>
-                    </Box>
-                    <Box className="alerts-kpi-line">
-                      <Typography className="alerts-kpi-line-label">Stale</Typography>
-                      <Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.issueCounts.stale}</Typography>
-                    </Box>
-                    <Box className="alerts-kpi-line">
-                      <Typography className="alerts-kpi-line-label">Invalid</Typography>
-                      <Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.issueCounts.invalid}</Typography>
-                    </Box>
-                    <Box className="alerts-kpi-line">
-                      <Typography className="alerts-kpi-line-label">Misaligned</Typography>
-                      <Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.issueCounts.misaligned}</Typography>
-                    </Box>
-                    <Box className="alerts-kpi-line">
-                      <Typography className="alerts-kpi-line-label">Total exceptions</Typography>
-                      <Typography className="alerts-kpi-line-value">
-                        {(exceptions ?? []).length}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </Box>
-                <Box className="alerts-kpi-group-card alerts-kpi-network">
-                  <Box className="alerts-kpi-group-head">
-                    <Box className="alerts-kpi-group-icon">
-                      <AssessmentOutlinedIcon fontSize="small" />
-                    </Box>
-                    <Typography className="alerts-kpi-group-title">Parameter scope</Typography>
-                  </Box>
-                  <Stack spacing={0.5}>
-                    <Box className="alerts-kpi-line">
-                      <Typography className="alerts-kpi-line-label">Total parameters</Typography>
-                      <Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.uniqueParams}</Typography>
-                    </Box>
-                    <Box className="alerts-kpi-line">
-                      <Typography className="alerts-kpi-line-label">SKUs with parameters</Typography>
-                      <Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.uniqueSkus}</Typography>
-                    </Box>
-                    <Box className="alerts-kpi-line">
-                      <Typography className="alerts-kpi-line-label">Nodes with parameters</Typography>
-                      <Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.uniqueNodes}</Typography>
-                    </Box>
-                    <Box className="alerts-kpi-line">
-                      <Typography className="alerts-kpi-line-label">Parameter records</Typography>
-                      <Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.totalParamRecords}</Typography>
-                    </Box>
-                  </Stack>
-                </Box>
-              </div>
+              <KpiCardRow>
+                <KpiCard title="Issues" tone="critical" icon={<WarningAmberOutlinedIcon fontSize="small" />} items={[
+                  { label: "Missing", value: String(exceptionDashboardMetrics.issueCounts.missing) },
+                  { label: "Stale", value: String(exceptionDashboardMetrics.issueCounts.stale) },
+                  { label: "Invalid", value: String(exceptionDashboardMetrics.issueCounts.invalid) },
+                  { label: "Misaligned", value: String(exceptionDashboardMetrics.issueCounts.misaligned) },
+                  { label: "Total exceptions", value: String((exceptions ?? []).length) },
+                ]} />
+                <KpiCard title="Parameter scope" tone="network" icon={<AssessmentOutlinedIcon fontSize="small" />} items={[
+                  { label: "Total parameters", value: String(exceptionDashboardMetrics.uniqueParams) },
+                  { label: "SKUs with parameters", value: String(exceptionDashboardMetrics.uniqueSkus) },
+                  { label: "Nodes with parameters", value: String(exceptionDashboardMetrics.uniqueNodes) },
+                  { label: "Parameter records", value: String(exceptionDashboardMetrics.totalParamRecords) },
+                ]} />
+              </KpiCardRow>
               ) : null}
             </SectionCard>
 
@@ -953,9 +909,28 @@ export default function ParametersPage() {
         onClose={() => setParameterAgentModalOpen(false)}
         fullWidth
         maxWidth="xl"
-        slotProps={{ paper: { sx: { minHeight: "80vh", maxHeight: "90vh" } } }}
+        slotProps={{
+          paper: {
+            sx: {
+              minHeight: "80vh",
+              maxHeight: "90vh",
+              borderRadius: 3,
+              bgcolor: "#f6faff",
+              border: "1px solid #dbe8ff",
+              boxShadow: "0 14px 34px rgba(71, 116, 221, 0.16)",
+            },
+          },
+        }}
       >
-        <DialogTitle>Parameter Diagnostic Agent</DialogTitle>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
+          <Typography variant="h6" component="span">Parameter Diagnostic Agent</Typography>
+          <Chip
+            size="small"
+            variant="outlined"
+            label={`Model: ${config.llmModel}`}
+            sx={{ bgcolor: "rgba(255,255,255,0.84)", borderColor: "#c9dcff", color: "#1f3f74", fontWeight: 600 }}
+          />
+        </DialogTitle>
         <DialogContent dividers sx={{ p: 0, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
           <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", p: 2 }}>
             <ParameterDiagnosticAgent

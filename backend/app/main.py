@@ -7,7 +7,7 @@ from fastapi import Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from .database import SessionLocal
+from .database import DATABASE_PATH, DATABASE_URL, SessionLocal
 from .schemas import (
     AutonomousExecuteRequest,
     AutonomousResponse,
@@ -57,6 +57,16 @@ from .schemas import (
     ScenarioRequest,
     ScenarioResponse,
     SkuDetailResponse,
+    DemandForecastResponse,
+    DemandPromotionResponse,
+    DemandConsensusResponse,
+    DemandForecastAccuracyResponse,
+    DemandExceptionResponse,
+    SopCycleResponse,
+    SopReviewItemResponse,
+    FinancialPlanResponse,
+    CustomerHierarchyResponse,
+    DemandPlanningKpiResponse,
 )
 from .services.chatbot_service import ChatbotService
 from .services.inventory_projection_service import InventoryProjectionService
@@ -122,8 +132,13 @@ def get_chatbot_service() -> ChatbotService:
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "date": "2026-03-08"}
+def health() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "date": "2026-03-08",
+        "database_url": DATABASE_URL,
+        "database_path": str(DATABASE_PATH) if DATABASE_PATH else None,
+    }
 
 
 @app.get("/alerts", response_model=DemoAlertsResponse)
@@ -773,3 +788,281 @@ def network_alert_impacted_skus(
         return service.get_alert_impacted_skus(alert_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail=f"Network alert not found: {alert_id}") from error
+
+
+# ---------------------------------------------------------------------------
+# Demand Planning / IBP endpoints
+# ---------------------------------------------------------------------------
+
+from .models import (
+    DemandForecast,
+    DemandPromotion,
+    DemandConsensusEntry,
+    DemandForecastAccuracy,
+    DemandException,
+    SopCycle,
+    SopReviewItem,
+    FinancialPlan,
+    CustomerHierarchy,
+)
+
+
+@app.get("/api/demand/forecasts", response_model=DemandForecastResponse)
+def get_demand_forecasts(
+    sku: str | None = None,
+    location: str | None = None,
+    db: Session = Depends(get_db_session),
+):
+    q = db.query(DemandForecast)
+    if sku:
+        q = q.filter(DemandForecast.sku == sku)
+    if location:
+        q = q.filter(DemandForecast.location == location)
+    rows = q.order_by(DemandForecast.sku, DemandForecast.location, DemandForecast.week_start).all()
+    return {"rows": [r.__dict__ for r in rows], "total": len(rows)}
+
+
+@app.get("/api/demand/promotions", response_model=DemandPromotionResponse)
+def get_demand_promotions(
+    sku: str | None = None,
+    location: str | None = None,
+    status: str | None = None,
+    customer: str | None = None,
+    db: Session = Depends(get_db_session),
+):
+    q = db.query(DemandPromotion)
+    if sku:
+        q = q.filter(DemandPromotion.sku == sku)
+    if location:
+        q = q.filter(DemandPromotion.location == location)
+    if status:
+        q = q.filter(DemandPromotion.status == status)
+    if customer:
+        q = q.filter(DemandPromotion.customer == customer)
+    rows = q.order_by(DemandPromotion.start_week).all()
+    return {"rows": [r.__dict__ for r in rows], "total": len(rows)}
+
+
+@app.get("/api/demand/consensus", response_model=DemandConsensusResponse)
+def get_demand_consensus(
+    cycle_id: str | None = None,
+    sku: str | None = None,
+    location: str | None = None,
+    db: Session = Depends(get_db_session),
+):
+    q = db.query(DemandConsensusEntry)
+    if cycle_id:
+        q = q.filter(DemandConsensusEntry.cycle_id == cycle_id)
+    if sku:
+        q = q.filter(DemandConsensusEntry.sku == sku)
+    if location:
+        q = q.filter(DemandConsensusEntry.location == location)
+    rows = q.order_by(DemandConsensusEntry.week_start).all()
+    return {"rows": [r.__dict__ for r in rows], "total": len(rows)}
+
+
+@app.get("/api/demand/accuracy", response_model=DemandForecastAccuracyResponse)
+def get_demand_accuracy(
+    sku: str | None = None,
+    location: str | None = None,
+    db: Session = Depends(get_db_session),
+):
+    q = db.query(DemandForecastAccuracy)
+    if sku:
+        q = q.filter(DemandForecastAccuracy.sku == sku)
+    if location:
+        q = q.filter(DemandForecastAccuracy.location == location)
+    rows = q.order_by(DemandForecastAccuracy.week_start).all()
+    total = len(rows)
+    avg_mape = sum(r.mape for r in rows) / total if total else 0.0
+    avg_bias = sum(r.bias for r in rows) / total if total else 0.0
+    avg_wmape = sum(r.wmape for r in rows) / total if total else 0.0
+    return {
+        "rows": [r.__dict__ for r in rows],
+        "total": total,
+        "avg_mape": round(avg_mape, 2),
+        "avg_bias": round(avg_bias, 2),
+        "avg_wmape": round(avg_wmape, 2),
+    }
+
+
+@app.get("/api/demand/exceptions", response_model=DemandExceptionResponse)
+def get_demand_exceptions(
+    sku: str | None = None,
+    location: str | None = None,
+    status: str | None = None,
+    severity: str | None = None,
+    db: Session = Depends(get_db_session),
+):
+    q = db.query(DemandException)
+    if sku:
+        q = q.filter(DemandException.sku == sku)
+    if location:
+        q = q.filter(DemandException.location == location)
+    if status:
+        q = q.filter(DemandException.status == status)
+    if severity:
+        q = q.filter(DemandException.severity == severity)
+    rows = q.order_by(DemandException.created_at.desc()).all()
+    open_count = sum(1 for r in rows if r.status == "open")
+    critical_count = sum(1 for r in rows if r.severity == "critical")
+    return {
+        "rows": [r.__dict__ for r in rows],
+        "total": len(rows),
+        "open_count": open_count,
+        "critical_count": critical_count,
+    }
+
+
+@app.patch("/api/demand/exceptions/{exception_id}")
+def update_demand_exception(
+    exception_id: str,
+    payload: dict,
+    db: Session = Depends(get_db_session),
+):
+    row = db.query(DemandException).filter(DemandException.exception_id == exception_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Exception not found: {exception_id}")
+    for field in ("status", "resolution", "assigned_to", "root_cause"):
+        if field in payload:
+            setattr(row, field, payload[field])
+    db.commit()
+    return {"status": "ok", "exception_id": exception_id}
+
+
+@app.get("/api/demand/sop-cycles", response_model=SopCycleResponse)
+def get_sop_cycles(
+    status: str | None = None,
+    db: Session = Depends(get_db_session),
+):
+    q = db.query(SopCycle)
+    if status:
+        q = q.filter(SopCycle.status == status)
+    rows = q.order_by(SopCycle.cycle_month.desc()).all()
+    return {"cycles": [r.__dict__ for r in rows], "total": len(rows)}
+
+
+@app.get("/api/demand/sop-review-items", response_model=SopReviewItemResponse)
+def get_sop_review_items(
+    cycle_id: str | None = None,
+    review_type: str | None = None,
+    db: Session = Depends(get_db_session),
+):
+    q = db.query(SopReviewItem)
+    if cycle_id:
+        q = q.filter(SopReviewItem.cycle_id == cycle_id)
+    if review_type:
+        q = q.filter(SopReviewItem.review_type == review_type)
+    rows = q.order_by(SopReviewItem.cycle_id, SopReviewItem.review_type).all()
+    return {"items": [r.__dict__ for r in rows], "total": len(rows)}
+
+
+@app.get("/api/demand/financial", response_model=FinancialPlanResponse)
+def get_financial_plans(
+    sku: str | None = None,
+    location: str | None = None,
+    plan_type: str | None = None,
+    db: Session = Depends(get_db_session),
+):
+    q = db.query(FinancialPlan)
+    if sku:
+        q = q.filter(FinancialPlan.sku == sku)
+    if location:
+        q = q.filter(FinancialPlan.location == location)
+    if plan_type:
+        q = q.filter(FinancialPlan.plan_type == plan_type)
+    rows = q.order_by(FinancialPlan.month, FinancialPlan.sku).all()
+    total_revenue = sum(r.revenue for r in rows)
+    total_cogs = sum(r.cogs for r in rows)
+    total_margin = sum(r.gross_margin for r in rows)
+    avg_margin_pct = (total_margin / total_revenue * 100) if total_revenue else 0.0
+    return {
+        "rows": [r.__dict__ for r in rows],
+        "total": len(rows),
+        "total_revenue": round(total_revenue, 2),
+        "total_cogs": round(total_cogs, 2),
+        "total_margin": round(total_margin, 2),
+        "avg_margin_pct": round(avg_margin_pct, 1),
+    }
+
+
+@app.get("/api/demand/customers", response_model=CustomerHierarchyResponse)
+def get_customer_hierarchy(
+    customer_type: str | None = None,
+    region: str | None = None,
+    db: Session = Depends(get_db_session),
+):
+    q = db.query(CustomerHierarchy)
+    if customer_type:
+        q = q.filter(CustomerHierarchy.customer_type == customer_type)
+    if region:
+        q = q.filter(CustomerHierarchy.region == region)
+    rows = q.order_by(CustomerHierarchy.customer_type, CustomerHierarchy.customer_name).all()
+    return {"customers": [r.__dict__ for r in rows], "total": len(rows)}
+
+
+@app.get("/api/demand/kpis", response_model=DemandPlanningKpiResponse)
+def get_demand_planning_kpis(
+    db: Session = Depends(get_db_session),
+):
+    accuracy_rows = db.query(DemandForecastAccuracy).all()
+    exception_rows = db.query(DemandException).all()
+    promo_rows = db.query(DemandPromotion).all()
+    financial_rows = db.query(FinancialPlan).all()
+    forecast_rows = db.query(DemandForecast).all()
+
+    total_acc = len(accuracy_rows)
+    avg_mape = round(sum(r.mape for r in accuracy_rows) / total_acc, 1) if total_acc else 0.0
+    avg_bias = round(sum(r.bias for r in accuracy_rows) / total_acc, 1) if total_acc else 0.0
+    open_exceptions = sum(1 for r in exception_rows if r.status == "open")
+    critical_exceptions = sum(1 for r in exception_rows if r.severity == "critical")
+    total_revenue = round(sum(r.revenue for r in financial_rows), 0)
+    total_margin = round(sum(r.gross_margin for r in financial_rows), 0)
+    active_promos = sum(1 for r in promo_rows if r.status in ("active", "planned"))
+    total_promo_lift = round(sum(r.lift_volume for r in promo_rows), 0)
+
+    kpis = [
+        {"label": "Forecast MAPE", "value": f"{avg_mape}%", "detail": f"Across {total_acc} SKU-location-weeks", "tone": "warning" if avg_mape > 25 else "positive"},
+        {"label": "Forecast Bias", "value": f"{avg_bias}%", "detail": "Positive = over-forecast", "tone": "warning" if abs(avg_bias) > 10 else "neutral"},
+        {"label": "Open Exceptions", "value": str(open_exceptions), "detail": f"{critical_exceptions} critical", "tone": "critical" if critical_exceptions > 3 else "warning"},
+        {"label": "Revenue (Plan)", "value": f"${total_revenue:,.0f}", "detail": f"Margin: ${total_margin:,.0f}", "tone": "positive"},
+        {"label": "Active Promotions", "value": str(active_promos), "detail": f"Lift: {total_promo_lift:,.0f} units", "tone": "neutral"},
+    ]
+
+    accuracy_by_week: dict[str, list] = {}
+    for r in accuracy_rows:
+        accuracy_by_week.setdefault(r.week_start, []).append(r.mape)
+    forecast_accuracy_trend = [
+        {"week": w, "mape": round(sum(v) / len(v), 1)} for w, v in sorted(accuracy_by_week.items())
+    ]
+
+    demand_by_week: dict[str, float] = {}
+    supply_by_week: dict[str, float] = {}
+    for r in forecast_rows:
+        demand_by_week[r.week_start] = demand_by_week.get(r.week_start, 0) + r.final_forecast_qty
+    from .models import NetworkForecastWeekly
+    nf_rows = db.query(NetworkForecastWeekly).all()
+    for r in nf_rows:
+        supply_by_week[r.week_start] = supply_by_week.get(r.week_start, 0) + r.forecast_qty
+    all_weeks = sorted(set(list(demand_by_week.keys()) + list(supply_by_week.keys())))
+    demand_vs_supply_gap = [
+        {"week": w, "demand": round(demand_by_week.get(w, 0), 0), "supply": round(supply_by_week.get(w, 0), 0)}
+        for w in all_weeks
+    ]
+
+    promo_impact_summary = {
+        "total_promotions": len(promo_rows),
+        "active": sum(1 for r in promo_rows if r.status == "active"),
+        "planned": sum(1 for r in promo_rows if r.status == "planned"),
+        "completed": sum(1 for r in promo_rows if r.status == "completed"),
+        "total_lift_volume": round(sum(r.lift_volume for r in promo_rows), 0),
+        "total_trade_spend": round(sum(r.trade_spend for r in promo_rows), 0),
+        "avg_roi": round(sum(r.roi for r in promo_rows) / len(promo_rows), 2) if promo_rows else 0.0,
+    }
+
+    return {
+        "kpis": kpis,
+        "forecast_accuracy_trend": forecast_accuracy_trend,
+        "demand_vs_supply_gap": demand_vs_supply_gap,
+        "promo_impact_summary": promo_impact_summary,
+    }

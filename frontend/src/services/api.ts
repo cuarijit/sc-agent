@@ -32,6 +32,16 @@ import type {
   ScenarioResponse,
   SkuDetailResponse,
   DocumentSearchResult,
+  DemandForecastResponse,
+  DemandPromotionResponse,
+  DemandConsensusResponse,
+  DemandForecastAccuracyResponse,
+  DemandExceptionResponse,
+  SopCycleResponse,
+  SopReviewItemResponse,
+  FinancialPlanResponse,
+  CustomerHierarchyResponse,
+  DemandPlanningKpiResponse,
 } from "../types";
 
 const API_BASE_URL =
@@ -374,4 +384,55 @@ export function chatbotFeedback(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Demand Planning / IBP API
+// ---------------------------------------------------------------------------
+
+export function fetchDemandForecasts(params?: URLSearchParams): Promise<DemandForecastResponse> {
+  return request(`/api/demand/forecasts${params ? `?${params.toString()}` : ""}`);
+}
+
+export function fetchDemandPromotions(params?: URLSearchParams): Promise<DemandPromotionResponse> {
+  return request(`/api/demand/promotions${params ? `?${params.toString()}` : ""}`);
+}
+
+export function fetchDemandConsensus(params?: URLSearchParams): Promise<DemandConsensusResponse> {
+  return request(`/api/demand/consensus${params ? `?${params.toString()}` : ""}`);
+}
+
+export function fetchDemandAccuracy(params?: URLSearchParams): Promise<DemandForecastAccuracyResponse> {
+  return request(`/api/demand/accuracy${params ? `?${params.toString()}` : ""}`);
+}
+
+export function fetchDemandExceptions(params?: URLSearchParams): Promise<DemandExceptionResponse> {
+  return request(`/api/demand/exceptions${params ? `?${params.toString()}` : ""}`);
+}
+
+export function updateDemandException(exceptionId: string, payload: Record<string, unknown>): Promise<{ status: string; exception_id: string }> {
+  return request(`/api/demand/exceptions/${encodeURIComponent(exceptionId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchSopCycles(params?: URLSearchParams): Promise<SopCycleResponse> {
+  return request(`/api/demand/sop-cycles${params ? `?${params.toString()}` : ""}`);
+}
+
+export function fetchSopReviewItems(params?: URLSearchParams): Promise<SopReviewItemResponse> {
+  return request(`/api/demand/sop-review-items${params ? `?${params.toString()}` : ""}`);
+}
+
+export function fetchFinancialPlans(params?: URLSearchParams): Promise<FinancialPlanResponse> {
+  return request(`/api/demand/financial${params ? `?${params.toString()}` : ""}`);
+}
+
+export function fetchCustomerHierarchy(params?: URLSearchParams): Promise<CustomerHierarchyResponse> {
+  return request(`/api/demand/customers${params ? `?${params.toString()}` : ""}`);
+}
+
+export function fetchDemandPlanningKpis(): Promise<DemandPlanningKpiResponse> {
+  return request("/api/demand/kpis");
 }

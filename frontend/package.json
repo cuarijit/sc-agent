@@ -36,8 +36,8 @@
     "vite": "^6.2.0"
   },
   "build": {
-    "appId": "com.zebra.meio.desktop",
-    "productName": "Zebra MEIO Desktop",
+    "appId": "com.supplyplanning.desktop",
+    "productName": "Supply Planning Desktop",
     "directories": {
       "output": "../release"
     },

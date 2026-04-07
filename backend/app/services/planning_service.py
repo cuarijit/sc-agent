@@ -45,10 +45,14 @@ class PlanningService:
     def _ensure_order_alert_link_table(self) -> None:
         bind = self.db.get_bind()
         ReplenishmentOrderAlertLink.__table__.create(bind=bind, checkfirst=True)
-        existing = {
-            (str(item.order_id), str(item.alert_id))
-            for item in self.db.query(ReplenishmentOrderAlertLink.order_id, ReplenishmentOrderAlertLink.alert_id).all()
-        }
+        try:
+            existing = {
+                (str(item.order_id), str(item.alert_id))
+                for item in self.db.query(ReplenishmentOrderAlertLink.order_id, ReplenishmentOrderAlertLink.alert_id).all()
+            }
+        except OperationalError:
+            self.db.rollback()
+            return
         created = False
         now_iso = datetime.utcnow().replace(microsecond=0).isoformat()
         for order_id, alert_id in self.db.query(ReplenishmentOrder.order_id, ReplenishmentOrder.alert_id).all():
@@ -68,7 +72,10 @@ class PlanningService:
             existing.add((oid, aid))
             created = True
         if created:
-            self.db.flush()
+            try:
+                self.db.flush()
+            except OperationalError:
+                self.db.rollback()
 
     def _order_alert_links_by_order_id(self, order_ids: list[str]) -> dict[str, dict[str, list[str]]]:
         if not order_ids:
@@ -995,7 +1002,6 @@ class PlanningService:
                 row.order_id
                 for row in self.db.query(ReplenishmentOrderAlertLink)
                 .filter(
-                    ReplenishmentOrderAlertLink.link_status == "active",
                     ReplenishmentOrderAlertLink.alert_id.in_(alert_filter_values),
                 )
                 .all()
@@ -1092,7 +1098,6 @@ class PlanningService:
                 item.order_id
                 for item in self.db.query(ReplenishmentOrderAlertLink)
                 .filter(
-                    ReplenishmentOrderAlertLink.link_status == "active",
                     ReplenishmentOrderAlertLink.alert_id.in_(alert_filter_values),
                 )
                 .all()
@@ -1249,7 +1254,15 @@ class PlanningService:
         product_count = len(aggregated)
         primary_sku = sorted({key[0] for key in aggregated})[0]
         created_at = str(payload.get("created_at") or datetime.utcnow().replace(microsecond=0).isoformat())
-        alert_id = str(payload.get("alert_id") or f"ALERT-MANUAL-{order_id}")
+        associate_alert = payload.get("associate_alert")
+        if associate_alert is None:
+            associate_alert = True
+        else:
+            associate_alert = bool(associate_alert)
+        if associate_alert:
+            alert_id = str(payload.get("alert_id") or f"ALERT-MANUAL-{order_id}")
+        else:
+            alert_id = ""
         region = payload.get("region")
         if not region:
             node = self.db.query(NetworkNode).filter(NetworkNode.node_id == ship_to).first()
@@ -1286,19 +1299,20 @@ class PlanningService:
         )
         self.db.add(order)
         self.db.flush()
-        self.db.add(
-            ReplenishmentOrderAlertLink(
-                order_id=order_id,
-                alert_id=alert_id,
-                link_status="active",
-                linked_scope="order",
-                source_node_id=ship_to,
-                created_at=datetime.utcnow().replace(microsecond=0).isoformat(),
+        if associate_alert and alert_id:
+            self.db.add(
+                ReplenishmentOrderAlertLink(
+                    order_id=order_id,
+                    alert_id=alert_id,
+                    link_status="active",
+                    linked_scope="order",
+                    source_node_id=ship_to,
+                    created_at=datetime.utcnow().replace(microsecond=0).isoformat(),
+                )
             )
-        )
-        # If this alert was previously archived but now has an active order link,
-        # restore it to active state so active/archive sections stay consistent.
-        self._sync_alert_archive_state(alert_id)
+            # If this alert was previously archived but now has an active order link,
+            # restore it to active state so active/archive sections stay consistent.
+            self._sync_alert_archive_state(alert_id)
         for (sku, d_ship_to, d_ship_from), qty in aggregated.items():
             self.db.add(
                 ReplenishmentOrderDetail(

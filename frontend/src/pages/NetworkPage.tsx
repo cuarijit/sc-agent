@@ -71,12 +71,13 @@ import {
   simulateNetworkScenario,
 } from "../services/api";
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
+import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
 import { SectionCard } from "../components/shared/UiBits";
 import { appendGlobalFilters, firstFilterValue, globalFiltersKey } from "../types/filters";
 import FilterBuilderDialog from "../components/shared/FilterBuilderDialog";
 import { EMPTY_FILTER_STATE, applyFilterState, type FilterFieldOption, type FilterState } from "../filtering";
-import InventoryDiagnosticAgent from "./InventoryDiagnosticAgent";
+import InventoryDiagnosticAgent, { type InventoryAgentLaunchPreset } from "./InventoryDiagnosticAgent";
 import ProjectedInventoryWorkbench from "../components/inventory/ProjectedInventoryWorkbench";
 import NetworkGraphModal from "../components/network/NetworkGraphModal";
 import { resolveImpactedSkuForNetworkGraph } from "../app/networkGraphSku";
@@ -177,6 +178,7 @@ export default function NetworkPage() {
   const networkCanvasExpandedRef = useRef<HTMLDivElement | null>(null);
   const [paramsModalOpen, setParamsModalOpen] = useState(false);
   const [inventoryAgentModalOpen, setInventoryAgentModalOpen] = useState(false);
+  const [inventoryAgentSession, setInventoryAgentSession] = useState(0);
   const [rulesModalOpen, setRulesModalOpen] = useState(false);
   const [ruleFormOpen, setRuleFormOpen] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
@@ -225,9 +227,27 @@ export default function NetworkPage() {
     setNetworkGraphModalOpen(true);
   }, []);
 
+  const inventoryAgentPresetParam = searchParams.get("inventoryAgentPreset");
+  const inventoryAgentLaunchPreset: InventoryAgentLaunchPreset = useMemo(() => {
+    if (inventoryAgentPresetParam === "complete") return "autonomous_complete";
+    if (inventoryAgentPresetParam === "need_guidance") return "autonomous_need_guidance";
+    return null;
+  }, [inventoryAgentPresetParam]);
+
+  const closeInventoryAgentModal = useCallback(() => {
+    setInventoryAgentModalOpen(false);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("inventoryAgentPreset");
+      next.delete("openInventoryAgent");
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   useEffect(() => {
     if (searchParams.get("openInventoryAgent") === "1") {
       setInventoryAgentModalOpen(true);
+      setInventoryAgentSession((s) => s + 1);
       const next = new URLSearchParams(searchParams);
       next.delete("openInventoryAgent");
       setSearchParams(next, { replace: true });
@@ -1064,11 +1084,11 @@ export default function NetworkPage() {
                     : nodeType.startsWith("supplier")
                       ? "SUP"
                       : "N";
-            const hasAlert = nodesWithAlerts.has(node.id);
             const isSelected = selectedInsightNodeId === node.id;
             const nodeInsight = nodeInsightByNodeId.get(node.id);
             const projectionSkuForNode = String(effectiveNetworkSku || nodeInsight?.sku || graphProductDetail?.sku || "").trim();
             const alertsForNode = nodeAlertsByNodeId.get(node.id) ?? [];
+            const alertCount = Math.max(0, alertsForNode.length);
             const nodeSeverity = nodeAlertSeverityByNodeId.get(node.id) ?? "info";
             return (
               <Fragment key={node.id}>
@@ -1110,27 +1130,36 @@ export default function NetworkPage() {
                         }}
                       >
                         <Inventory2OutlinedIcon sx={{ fontSize: expanded ? 11 : 14 }} />
-                        {hasAlert ? (
-                          <Box
-                            component="span"
-                            sx={{
-                              position: "absolute",
-                              top: expanded ? -4 : -5,
-                              right: expanded ? -3 : -4,
-                              minWidth: expanded ? 11 : 13,
-                              height: expanded ? 11 : 13,
-                              px: expanded ? 0.2 : 0.3,
-                              borderRadius: 6,
-                              bgcolor: nodeSeverity === "critical" ? "error.main" : nodeSeverity === "warning" ? "warning.main" : "grey.600",
-                              color: "#fff",
-                              fontSize: expanded ? 7 : 9,
-                              lineHeight: expanded ? "11px" : "13px",
-                              textAlign: "center",
-                            }}
-                          >
-                            {alertsForNode.length || 1}
-                          </Box>
-                        ) : null}
+                        <Typography component="span" sx={{ ml: 0.25, fontSize: expanded ? 6.6 : 7.8, fontWeight: 800, lineHeight: 1 }}>
+                          PI
+                        </Typography>
+                        <Box
+                          component="span"
+                          sx={{
+                            position: "absolute",
+                            top: expanded ? -4 : -5,
+                            right: expanded ? -3 : -4,
+                            minWidth: expanded ? 11 : 13,
+                            height: expanded ? 11 : 13,
+                            px: expanded ? 0.2 : 0.3,
+                            borderRadius: 6,
+                            bgcolor:
+                              alertCount === 0
+                                ? "grey.600"
+                                : nodeSeverity === "critical"
+                                  ? "error.main"
+                                  : nodeSeverity === "warning"
+                                    ? "warning.main"
+                                    : "grey.600",
+                            color: "#fff",
+                            fontSize: expanded ? 7 : 9,
+                            lineHeight: expanded ? "11px" : "13px",
+                            textAlign: "center",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {alertCount}
+                        </Box>
                       </IconButton>
                     </Tooltip>
                   </Stack>
@@ -1679,7 +1708,10 @@ export default function NetworkPage() {
                     size="small"
                     variant="outlined"
                     startIcon={<PsychologyAltOutlinedIcon />}
-                    onClick={() => setInventoryAgentModalOpen(true)}
+                    onClick={() => {
+                      setInventoryAgentSession((s) => s + 1);
+                      setInventoryAgentModalOpen(true);
+                    }}
                   >
                     Inventory Diagnostic Agent
                   </Button>
@@ -1694,39 +1726,26 @@ export default function NetworkPage() {
                 </Stack>
               </Stack>
               {!alertsDashboardCollapsed ? (
-                <div className="alerts-kpi-group-row">
+                <KpiCardRow>
                   {alertsDashboardGroups.map((group) => (
-                    <Box key={group.key} className={`alerts-kpi-group-card alerts-kpi-${group.tone}`}>
-                      <Box className="alerts-kpi-group-head">
-                        <Box className="alerts-kpi-group-icon">{group.icon}</Box>
-                        <Typography className="alerts-kpi-group-title">{group.label}</Typography>
-                      </Box>
-                      <Stack spacing={0.5}>
-                        {group.items.map((item) => {
-                          const severityKey = item.label.toLowerCase();
-                          const isSeverityItem = group.key === "severity" && ["critical", "warning", "info"].includes(severityKey);
-                          const isActive = isSeverityItem && activeSeverityFilter === severityKey;
-                          return isSeverityItem ? (
-                            <button
-                              key={`${group.key}-${item.label}`}
-                              type="button"
-                              className={`alerts-kpi-line alerts-kpi-line-clickable ${isActive ? "alerts-kpi-line-active" : ""}`}
-                              onClick={() => applySeverityFilter(severityKey)}
-                            >
-                              <Typography className="alerts-kpi-line-label">{item.label}</Typography>
-                              <Typography className="alerts-kpi-line-value">{item.value}</Typography>
-                            </button>
-                          ) : (
-                            <Box key={`${group.key}-${item.label}`} className="alerts-kpi-line">
-                              <Typography className="alerts-kpi-line-label">{item.label}</Typography>
-                              <Typography className="alerts-kpi-line-value">{item.value}</Typography>
-                            </Box>
-                          );
-                        })}
-                      </Stack>
-                    </Box>
+                    <KpiCard
+                      key={group.key}
+                      title={group.label}
+                      icon={group.icon}
+                      tone={group.tone}
+                      items={group.items.map((item) => {
+                        const severityKey = item.label.toLowerCase();
+                        const isSeverityItem = group.key === "severity" && ["critical", "warning", "info"].includes(severityKey);
+                        return {
+                          label: item.label,
+                          value: String(item.value),
+                          onClick: isSeverityItem ? () => applySeverityFilter(severityKey) : undefined,
+                          active: isSeverityItem && activeSeverityFilter === severityKey,
+                        };
+                      })}
+                    />
                   ))}
-                </div>
+                </KpiCardRow>
               ) : null}
             </SectionCard>
             <SectionCard title="Alerts workbench" subtitle="Filter, select, and run simulation from selected alerts">
@@ -2267,13 +2286,32 @@ export default function NetworkPage() {
 
       <Dialog
         open={inventoryAgentModalOpen}
-        onClose={() => setInventoryAgentModalOpen(false)}
+        onClose={closeInventoryAgentModal}
         fullWidth
         maxWidth="xl"
-        slotProps={{ paper: { sx: { minHeight: "80vh", maxHeight: "90vh" } } }}
+        slotProps={{
+          paper: {
+            sx: {
+              minHeight: "80vh",
+              maxHeight: "90vh",
+              borderRadius: 3,
+              bgcolor: "#f6faff",
+              border: "1px solid #dbe8ff",
+              boxShadow: "0 14px 34px rgba(71, 116, 221, 0.16)",
+            },
+          },
+        }}
       >
         <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
-          <Typography variant="h6" component="span">Inventory Diagnostic Agent</Typography>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Typography variant="h6" component="span">Inventory Diagnostic Agent</Typography>
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`Model: ${config.llmModel}`}
+              sx={{ bgcolor: "rgba(255,255,255,0.84)", borderColor: "#c9dcff", color: "#1f3f74", fontWeight: 600 }}
+            />
+          </Stack>
           <Stack direction="row" alignItems="center" spacing={1}>
             <Typography variant="body2" color="text.secondary">Autonomous mode</Typography>
             <Switch
@@ -2294,11 +2332,11 @@ export default function NetworkPage() {
         </DialogTitle>
         <DialogContent dividers sx={{ p: 0, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
           <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", p: 2 }}>
-            <InventoryDiagnosticAgent />
+            <InventoryDiagnosticAgent key={inventoryAgentSession} launchPreset={inventoryAgentLaunchPreset} />
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setInventoryAgentModalOpen(false)}>Close</Button>
+          <Button onClick={closeInventoryAgentModal}>Close</Button>
         </DialogActions>
       </Dialog>
 

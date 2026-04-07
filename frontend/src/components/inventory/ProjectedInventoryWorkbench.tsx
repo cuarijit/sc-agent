@@ -23,7 +23,7 @@ import { alpha } from "@mui/material/styles";
 import { type GridColDef } from "@mui/x-data-grid";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   Bar,
   CartesianGrid,
@@ -339,6 +339,34 @@ export default function ProjectedInventoryWorkbench({
     [displayWeeks],
   );
 
+  /** Include full range (including negative projected inventory); stacked order bars need max of stack sum. */
+  const chartYAxisDomain = useMemo((): [number, number] | ["auto", "auto"] => {
+    if (!chartData.length) return ["auto", "auto"];
+    let min = Infinity;
+    let max = -Infinity;
+    const bump = (v: number | null | undefined) => {
+      if (v == null || !Number.isFinite(v)) return;
+      min = Math.min(min, v);
+      max = Math.max(max, v);
+    };
+    for (const row of chartData) {
+      bump(row.currentOnHand);
+      bump(row.projectedActual);
+      bump(row.projectedPlanned);
+      bump(row.projectedScenario);
+      bump(row.forecast);
+      bump(row.rop);
+      bump(row.safety);
+      bump(row.ordersNonException);
+      bump(row.ordersException);
+      bump((Number(row.ordersNonException) || 0) + (Number(row.ordersException) || 0));
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return ["auto", "auto"];
+    const span = Math.max(max - min, 1e-9);
+    const pad = span * 0.06;
+    return [min - pad, max + pad];
+  }, [chartData]);
+
   const transposedRows = useMemo<TransposedRow[]>(() => {
     const rows: TransposedRow[] = [
       { id: "current_on_hand", metric: "Current On-Hand", editable: false },
@@ -408,12 +436,17 @@ export default function ProjectedInventoryWorkbench({
                       <ErrorOutlineOutlinedIcon fontSize="inherit" sx={{ color: "error.main" }} />
                     ) : null}
                     <Typography
-                      component={Link}
-                      to={orderDetailsHref(id)}
+                      component="button"
+                      type="button"
                       onClick={(event) => {
                         event.stopPropagation();
+                        navigate(orderDetailsHref(id));
                       }}
                       sx={(theme) => ({
+                        border: 0,
+                        background: "transparent",
+                        padding: 0,
+                        cursor: "pointer",
                         fontSize: "inherit",
                         lineHeight: 1.1,
                         fontWeight: exceptionIds.has(id) ? 700 : 500,
@@ -703,8 +736,8 @@ export default function ProjectedInventoryWorkbench({
                     <ComposedChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="week" />
-                      <YAxis domain={[-10, "auto"]} allowDataOverflow />
-                      <RechartsTooltip />
+                      <YAxis domain={chartYAxisDomain} allowDecimals={false} tickFormatter={(v: number) => Math.round(v).toLocaleString()} />
+                      <RechartsTooltip formatter={(value: number) => Math.round(value).toLocaleString()} />
                       <Legend />
                       <Bar dataKey="currentOnHand" name="Current On-Hand (Wk1)" fill="#475569" barSize={16} isAnimationActive={false} />
                       <Bar dataKey="ordersNonException" name="Future Orders (Non-Exception)" stackId="orders" fill="#059669" barSize={16} isAnimationActive={false} />

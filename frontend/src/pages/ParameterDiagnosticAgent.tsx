@@ -3,6 +3,7 @@ import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import RestartAltOutlinedIcon from "@mui/icons-material/RestartAltOutlined";
 import ScienceOutlinedIcon from "@mui/icons-material/ScienceOutlined";
 import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
+import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
 import {
   Avatar,
   Box,
@@ -161,6 +162,12 @@ function buildParamsToSet(rows: ParamExceptionRow[], selectedIds: GridRowId[]): 
   }));
 }
 
+function formatMessageTime(ts: number): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 type ParamAgentStepId = "idle" | "show_exceptions_grid" | "show_parameters_to_set" | "ask_network_impact" | "flow_complete";
 
 const PARAM_ALL_STEPS: { id: ParamAgentStepId; label: string }[] = [
@@ -314,10 +321,42 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
   ];
 
   return (
-    <Box sx={{ display: "flex", gap: 2, width: "100%", flex: 1, minHeight: 0, overflow: "hidden" }}>
-      <Box sx={{ flex: "1 1 400px", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5, flexShrink: 0 }}>
-          <Typography variant="subtitle2" color="text.secondary">
+    <Box
+      sx={{
+        display: "flex",
+        gap: 1.5,
+        width: "100%",
+        flex: 1,
+        minHeight: 0,
+        overflow: "hidden",
+        p: 1,
+        borderRadius: 3,
+        border: "1px solid #dbe8ff",
+        bgcolor: "#f6faff",
+        boxShadow: "0 14px 34px rgba(71, 116, 221, 0.16)",
+      }}
+    >
+      <Box sx={{ flex: "1 1 400px", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", gap: 1 }}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{
+            px: 1.2,
+            py: 1,
+            borderRadius: 1.5,
+            border: "1px solid #d8e8ff",
+            bgcolor: "rgba(238, 246, 255, 0.9)",
+            flexShrink: 0,
+          }}
+        >
+          <Stack direction="row" spacing={0.8} alignItems="center">
+            <AutoAwesomeOutlinedIcon fontSize="small" color="primary" />
+            <Typography variant="subtitle2" color="#1f3f74" fontWeight={700}>
+              Parameter Diagnostic Assistant
+            </Typography>
+          </Stack>
+          <Typography variant="caption" color="text.secondary">
             Ask about missing, critical, misaligned, or new-CDC parameters.
           </Typography>
           <Tooltip title="Suggested prompts">
@@ -331,7 +370,7 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
             onClose={() => setHelpAnchorEl(null)}
             anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
             transformOrigin={{ vertical: "top", horizontal: "right" }}
-            slotProps={{ paper: { sx: { p: 1.5, maxWidth: 420 } } }}
+            slotProps={{ paper: { sx: { p: 1.5, maxWidth: 460, border: "1px solid #d8e8ff", bgcolor: "#ffffff" } } }}
           >
             <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
               Suggested prompts
@@ -358,7 +397,20 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
             </Stack>
           </Popover>
         </Stack>
-        <Paper elevation={0} sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "auto", p: 1.5 }}>
+        <Paper
+          elevation={0}
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "auto",
+            p: 1.5,
+            border: "1px solid #d8e8ff",
+            bgcolor: "rgba(255,255,255,0.75)",
+            borderRadius: 2,
+          }}
+        >
           <Stack spacing={1.2}>
             {messages.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
@@ -366,9 +418,21 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
               </Typography>
             ) : (
               messages.map((msg) => (
-                <Stack key={msg.id} direction="row" spacing={1.5} justifyContent={msg.role === "user" ? "flex-end" : "flex-start"}>
+                <Stack
+                  key={msg.id}
+                  direction="row"
+                  spacing={1.5}
+                  justifyContent={msg.role === "user" ? "flex-end" : "flex-start"}
+                  sx={{
+                    "@keyframes bubbleIn": {
+                      from: { opacity: 0, transform: "translateY(6px)" },
+                      to: { opacity: 1, transform: "translateY(0)" },
+                    },
+                    animation: "bubbleIn 220ms ease",
+                  }}
+                >
                   {msg.role === "assistant" ? (
-                    <Avatar sx={{ bgcolor: "primary.main", width: 32, height: 32 }}>
+                    <Avatar sx={{ width: 30, height: 30, bgcolor: "#d9f2ff", color: "#0f5778" }}>
                       <SmartToyOutlinedIcon fontSize="small" />
                     </Avatar>
                   ) : null}
@@ -378,17 +442,34 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
                       px: 1.5,
                       py: 1,
                       maxWidth: "85%",
-                      bgcolor: msg.role === "user" ? "primary.main" : "action.hover",
-                      color: msg.role === "user" ? "primary.contrastText" : "text.primary",
                       borderRadius: 2,
+                      border: "1px solid",
+                      borderColor: msg.role === "user" ? "#b8d5ff" : "#c6e8ff",
+                      bgcolor: msg.role === "user" ? "#e8f2ff" : "#f1faff",
+                      color: msg.role === "user" ? "#1f4f88" : "text.primary",
                     }}
                   >
-                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                    <Typography variant="caption" sx={{ display: "block", mb: 0.35, fontWeight: 700, color: msg.role === "user" ? "#1f4f88" : "#1e4f86" }}>
+                      {msg.role === "user" ? "You" : "Assistant"}
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.45 }}>
                       {msg.content.replace(/\*\*(.*?)\*\*/g, "$1")}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        mt: 0.35,
+                        display: "block",
+                        textAlign: msg.role === "user" ? "right" : "left",
+                        color: "text.secondary",
+                        fontSize: 11,
+                      }}
+                    >
+                      {formatMessageTime(msg.createdAt)}
                     </Typography>
                   </Paper>
                   {msg.role === "user" ? (
-                    <Avatar sx={{ bgcolor: "secondary.main", width: 32, height: 32 }}>
+                    <Avatar sx={{ width: 30, height: 30, bgcolor: "#d6e7ff", color: "#204f8f" }}>
                       <PersonOutlineIcon fontSize="small" />
                     </Avatar>
                   ) : null}
@@ -396,21 +477,59 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
               ))
             )}
             {loading ? (
-              <Stack direction="row" spacing={1.5} justifyContent="flex-start">
-                <Avatar sx={{ bgcolor: "primary.main", width: 32, height: 32 }}>
+              <Stack
+                direction="row"
+                spacing={1.5}
+                justifyContent="flex-start"
+                sx={{
+                  "@keyframes thinkingPulse": {
+                    "0%": { opacity: 0.65 },
+                    "50%": { opacity: 1 },
+                    "100%": { opacity: 0.65 },
+                  },
+                  animation: "thinkingPulse 1.2s ease-in-out infinite",
+                }}
+              >
+                <Avatar sx={{ width: 30, height: 30, bgcolor: "#d9f2ff", color: "#0f5778" }}>
                   <SmartToyOutlinedIcon fontSize="small" />
                 </Avatar>
-                <Chip label="Analyzing..." size="small" sx={{ alignSelf: "center" }} />
+                <Box sx={{ px: 1.3, py: 0.9, borderRadius: 2, border: "1px solid #c6e8ff", bgcolor: "#f1faff", alignSelf: "center" }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="body2" sx={{ fontSize: 14 }}>Analyzing...</Typography>
+                    <Stack direction="row" spacing={0.5} sx={{ ml: 0.3 }}>
+                      {[0, 1, 2].map((idx) => (
+                        <Box
+                          key={idx}
+                          sx={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            bgcolor: "#5f89c9",
+                            "@keyframes dotBounce": {
+                              "0%, 80%, 100%": { transform: "scale(0.7)", opacity: 0.45 },
+                              "40%": { transform: "scale(1)", opacity: 1 },
+                            },
+                            animation: "dotBounce 1.1s infinite ease-in-out",
+                            animationDelay: `${idx * 0.14}s`,
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  </Stack>
+                </Box>
               </Stack>
             ) : null}
             <div ref={chatEndRef} />
           </Stack>
 
           {currentStepId === "show_exceptions_grid" && !loading && (
-            <Paper variant="outlined" sx={{ mt: 1, p: 1 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#d8e8ff", bgcolor: "#fbfdff", borderRadius: 1.5 }}>
+              <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1 }}>
+                <Chip size="small" label="Step 1" sx={{ bgcolor: "#edf4ff", color: "#1f4f88", fontWeight: 700 }} />
+                <Typography variant="subtitle2">
                 Parameter exceptions — select rows and click Proceed
-              </Typography>
+                </Typography>
+              </Stack>
               <div className="maintenance-grid-shell" style={{ height: 280 }}>
                 <SmartDataGrid
                   rows={exceptionRows}
@@ -425,24 +544,27 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
                   sx={{ border: 0 }}
                 />
               </div>
-              <Button variant="contained" size="small" sx={{ mt: 1 }} disabled={selectedExceptionRowIds.length === 0} onClick={handleProceedFromGrid}>
+              <Button variant="contained" size="small" sx={{ mt: 1, minWidth: 100 }} disabled={selectedExceptionRowIds.length === 0} onClick={handleProceedFromGrid}>
                 Proceed
               </Button>
             </Paper>
           )}
 
           {currentStepId === "show_parameters_to_set" && (
-            <Paper variant="outlined" sx={{ mt: 1, p: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#d8e8ff", bgcolor: "#fbfdff", borderRadius: 1.5 }}>
+              <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1 }}>
+                <Chip size="small" label="Step 2" sx={{ bgcolor: "#edf4ff", color: "#1f4f88", fontWeight: 700 }} />
+                <Typography variant="subtitle2">
                 Set value or run optimizer
-              </Typography>
+                </Typography>
+              </Stack>
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 2 }}>
                 Fill-rate, Safety stock, and Service level are optimizer-based; you can set a value manually or run the optimizer. Other parameters: set the value manually.
               </Typography>
               <Stack spacing={1.5} sx={{ mb: 2 }}>
                 {paramsToSet.map((param) => (
-                  <Box key={param.id} sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
-                    <Box sx={{ minWidth: 180 }}>
+                  <Box key={param.id} sx={{ display: "flex", alignItems: "center", gap: 1.2, flexWrap: "wrap", p: 1, border: "1px solid #deebff", borderRadius: 1.2, bgcolor: "#ffffff" }}>
+                    <Box sx={{ minWidth: 200 }}>
                       <Typography variant="body2" fontWeight={600}>{param.parameter_name}</Typography>
                       <Typography variant="caption" color="text.secondary">
                         Current: {param.current_value === "—" ? "Not set" : param.current_value} → Recommended: {param.recommended_value}
@@ -476,10 +598,13 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
           )}
 
           {currentStepId === "ask_network_impact" && (
-            <Paper variant="outlined" sx={{ mt: 1, p: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#d8e8ff", bgcolor: "#fbfdff", borderRadius: 1.5 }}>
+              <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1 }}>
+                <Chip size="small" label="Step 3" sx={{ bgcolor: "#edf4ff", color: "#1f4f88", fontWeight: 700 }} />
+                <Typography variant="subtitle2">
                 Look for network issues impacted by these parameter changes?
-              </Typography>
+                </Typography>
+              </Stack>
               <Stack direction="row" gap={1}>
                 <Button variant={networkImpactChoice === "yes" ? "contained" : "outlined"} size="small" onClick={() => handleNetworkImpactChoice("yes")}>
                   Yes
@@ -492,14 +617,24 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
           )}
 
           {flowEndMessage && (
-            <Paper variant="outlined" sx={{ mt: 1, p: 2, bgcolor: "success.light", color: "success.contrastText" }}>
+            <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#9dd6bb", bgcolor: "#e8f7ef", color: "#0f5132", borderRadius: 1.5 }}>
               <Typography variant="subtitle2">{flowEndMessage}</Typography>
             </Paper>
           )}
 
         </Paper>
 
-        <Paper elevation={0} sx={{ p: 1.5, flexShrink: 0 }}>
+        <Paper
+          elevation={0}
+          sx={{
+            p: 1.2,
+            flexShrink: 0,
+            border: "1px solid #d8e8ff",
+            bgcolor: "rgba(255,255,255,0.94)",
+            borderRadius: 1.5,
+            borderTop: "1px solid #d8e8ff",
+          }}
+        >
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="stretch">
             <TextField
               value={prompt}
@@ -510,6 +645,7 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
               minRows={1}
               maxRows={3}
               size="small"
+              sx={{ "& .MuiInputBase-root": { bgcolor: "#ffffff", fontSize: 15 } }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -519,7 +655,13 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
               disabled={currentStepId !== "idle"}
             />
             <Stack direction="row" spacing={0.5} alignItems="center">
-              <Button variant="contained" disabled={!prompt.trim() || loading || currentStepId !== "idle"} onClick={handleSubmitPrompt} startIcon={<SmartToyOutlinedIcon />}>
+              <Button
+                variant="contained"
+                disabled={!prompt.trim() || loading || currentStepId !== "idle"}
+                onClick={handleSubmitPrompt}
+                startIcon={<SmartToyOutlinedIcon />}
+                sx={{ fontWeight: 600, fontSize: 14, minWidth: 110 }}
+              >
                 Submit
               </Button>
               <Tooltip title="Reset conversation">
@@ -539,13 +681,16 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
           minWidth: 320,
           minHeight: 0,
           overflowY: "auto",
-          p: 2,
+          p: 1.4,
           display: "flex",
           flexDirection: "column",
-          gap: 1.5,
+          gap: 1,
+          borderColor: "#d8e8ff",
+          bgcolor: "rgba(255,255,255,0.75)",
+          borderRadius: 2,
         }}
       >
-        <Typography variant="subtitle2" fontWeight={600}>
+        <Typography variant="subtitle2" fontWeight={700} color="#1f3f74">
           Progress &amp; remaining steps
         </Typography>
         <Divider />
@@ -553,18 +698,28 @@ export default function ParameterDiagnosticAgent({ onOpenInventoryAgent }: Param
           <Box
             key={step.id}
             sx={{
-              py: 0.5,
+              py: 0.6,
               pl: 1,
               borderLeft: "3px solid",
               borderColor: step.status === "current" ? "primary.main" : step.status === "done" ? "success.main" : "divider",
+              borderRadius: 1,
+              bgcolor: step.status === "current" ? "rgba(37,99,235,0.06)" : "transparent",
             }}
           >
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap" }}>
+              <Box
+                sx={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  bgcolor: step.status === "current" ? "primary.main" : step.status === "done" ? "success.main" : "divider",
+                  flexShrink: 0,
+                }}
+              />
               <Typography
                 variant="caption"
-                fontWeight={step.status === "current" ? 700 : 400}
+                fontWeight={step.status === "current" ? 700 : 500}
                 color={step.status === "current" ? "primary.main" : step.status === "done" ? "success.main" : "text.secondary"}
-                noWrap
               >
                 {step.label}
               </Typography>

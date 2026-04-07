@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { Box, Button, Chip, CssBaseline, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Drawer, Stack, ThemeProvider, Typography, createTheme } from "@mui/material";
-import { Outlet, useLocation } from "react-router-dom";
+import { Box, Button, Chip, CssBaseline, Divider, Drawer, Stack, ThemeProvider, Typography, createTheme } from "@mui/material";
+import type {} from "@mui/x-data-grid/themeAugmentation";
+import { Outlet, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import LeftNav from "./LeftNav";
 import TopHeader from "./TopHeader";
 import GlobalFilterBar from "./GlobalFilterBar";
 import ConfigDialog from "./ConfigDialog";
-import { fetchAutonomousRuns, fetchLlmOptions, resetDemoData, runAutonomous } from "../../services/api";
+import { fetchAutonomousRuns, fetchLlmOptions, runAutonomous } from "../../services/api";
 import type { AutonomousResponse, LlmOptionsResponse, UiConfig } from "../../types";
 import type { GlobalFilters } from "../../types/filters";
 
@@ -57,16 +58,26 @@ type InfoRun = {
   time: string;
 };
 
+function mapAutonomousRunStatusToInventoryPreset(status: string): "complete" | "need_guidance" | null {
+  const raw = String(status || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "_");
+  if (raw === "completed" || raw === "complete") return "complete";
+  if (raw === "needs_user_guidance" || raw === "need_user_guidance") return "need_guidance";
+  return null;
+}
+
 export default function AppShellLayout() {
-  const location = useLocation();
+  const navigate = useNavigate();
+  const COLLAPSED_NAV_WIDTH = 46;
+  const EXPANDED_NAV_WIDTH = 195;
   const queryClient = useQueryClient();
   const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
   const [filters, setFilters] = useState<GlobalFilters>(defaultFilters);
   const [collapsed, setCollapsed] = useState(true);
   const [configOpen, setConfigOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
-  const [infoRunModalOpen, setInfoRunModalOpen] = useState(false);
-  const [selectedInfoRun, setSelectedInfoRun] = useState<InfoRun | null>(null);
   const [llmApiKeys, setLlmApiKeys] = useState<Record<string, string>>({});
   const [config, setConfig] = useState<UiConfig>(() => {
     const raw = localStorage.getItem("meio_ui_config");
@@ -103,28 +114,44 @@ export default function AppShellLayout() {
       await queryClient.invalidateQueries({ queryKey: ["demo-alerts"] });
     },
   });
-  const resetDemoMutation = useMutation({
-    mutationFn: resetDemoData,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries();
-    },
-  });
   const theme = useMemo(
-    () =>
-      createTheme({
+    () => {
+      const isLight = themeMode === "light";
+      return createTheme({
         palette: {
           mode: themeMode,
-          primary: { main: "#0073e6" },
-          secondary: { main: "#0b63ce" },
-          background: { default: themeMode === "dark" ? "#0e121a" : "#f4f6f9", paper: themeMode === "dark" ? "#121826" : "#ffffff" },
-          text: { primary: themeMode === "dark" ? "#e7ebf3" : "#1d1e23", secondary: themeMode === "dark" ? "#acb4c3" : "#545963" },
+          primary: {
+            main: isLight ? "#2679A8" : "#519BC5",
+            light: "#7AC6E9",
+            dark: "#16608B",
+            contrastText: "#ffffff",
+          },
+          secondary: {
+            main: isLight ? "#883DCF" : "#A064D9",
+            light: "#B88BE2",
+            dark: "#662E9B",
+            contrastText: "#ffffff",
+          },
+          background: {
+            default: isLight ? "#f1f5fa" : "#080c14",
+            paper: isLight ? "#ffffff" : "#0d1320",
+          },
+          text: {
+            primary: isLight ? "#0B4A6F" : "#D9F3FF",
+            secondary: isLight ? "#4a6680" : "#7AC6E9",
+          },
+          info: { main: isLight ? "#2679A8" : "#519BC5" },
+          success: { main: "#059669" },
+          warning: { main: "#d97706" },
+          error: { main: "#dc2626" },
         },
         shape: { borderRadius: 4 },
         typography: {
           fontSize: 11,
           fontFamily: '"IBM Plex Sans", "Nunito Sans", "Segoe UI", sans-serif',
-          h6: { fontWeight: 600, letterSpacing: 0 },
-          subtitle1: { fontWeight: 700, fontSize: "18px", lineHeight: "24px" },
+          h5: { fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif', fontWeight: 700, letterSpacing: "-0.01em" },
+          h6: { fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif', fontWeight: 700, letterSpacing: "-0.01em" },
+          subtitle1: { fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif', fontWeight: 700, fontSize: "14px", lineHeight: "20px" },
           subtitle2: { fontSize: "11px", lineHeight: "16px" },
           body1: { fontSize: "11px", lineHeight: "16px" },
           body2: { fontSize: "11px", lineHeight: "16px" },
@@ -136,32 +163,23 @@ export default function AppShellLayout() {
             styleOverrides: {
               root: {
                 borderRadius: 4,
-                borderColor: themeMode === "dark" ? "#2a3346" : "#d8dcde",
+                borderColor: isLight ? "#cdd8e4" : "#1b2a40",
               },
             },
           },
           MuiCard: {
-            styleOverrides: {
-              root: {
-                fontSize: 14,
-              },
-            },
+            styleOverrides: { root: { fontSize: 14 } },
           },
           MuiCardContent: {
             styleOverrides: {
               root: {
                 fontSize: 14,
-                "& .MuiTypography-root": {
-                  fontSize: 14,
-                },
+                "& .MuiTypography-root": { fontSize: 14 },
               },
             },
           },
           MuiButton: {
-            defaultProps: {
-              size: "small",
-              disableElevation: true,
-            },
+            defaultProps: { size: "small", disableElevation: true },
             styleOverrides: {
               root: {
                 borderRadius: 4,
@@ -172,116 +190,89 @@ export default function AppShellLayout() {
                 gap: 6,
               },
               outlined: {
-                borderColor: themeMode === "dark" ? "#4ea4ff" : "#0073e6",
-                color: themeMode === "dark" ? "#7dbdff" : "#0073e6",
+                borderColor: "#519BC5",
+                color: isLight ? "#16608B" : "#7AC6E9",
               },
               contained: {
                 boxShadow: "none",
+                background: isLight
+                  ? "linear-gradient(135deg, #2679A8 0%, #16608B 100%)"
+                  : "linear-gradient(135deg, #519BC5 0%, #2679A8 100%)",
+                "&:hover": {
+                  background: isLight
+                    ? "linear-gradient(135deg, #16608B 0%, #0B4A6F 100%)"
+                    : "linear-gradient(135deg, #7AC6E9 0%, #519BC5 100%)",
+                },
               },
             },
           },
           MuiIconButton: {
-            defaultProps: {
-              size: "small",
-            },
-            styleOverrides: {
-              root: {
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-              },
-            },
+            defaultProps: { size: "small" },
+            styleOverrides: { root: { width: 28, height: 28, borderRadius: 6 } },
           },
           MuiTextField: {
-            defaultProps: {
-              size: "small",
-              variant: "outlined",
-            },
+            defaultProps: { size: "small", variant: "outlined" },
           },
           MuiOutlinedInput: {
             styleOverrides: {
-              root: {
-                minHeight: 32,
-                borderRadius: 4,
-                fontSize: 11,
-              },
-              input: {
-                padding: "7px 10px",
-              },
+              root: { minHeight: 32, borderRadius: 4, fontSize: 11 },
+              input: { padding: "7px 10px" },
             },
           },
           MuiInputLabel: {
-            styleOverrides: {
-              root: {
-                fontSize: 11,
-              },
-            },
+            styleOverrides: { root: { fontSize: 11 } },
           },
           MuiFormLabel: {
-            styleOverrides: {
-              root: {
-                fontSize: 11,
-              },
-            },
+            styleOverrides: { root: { fontSize: 11 } },
           },
           MuiSelect: {
-            defaultProps: {
-              size: "small",
-            },
+            defaultProps: { size: "small" },
           },
           MuiMenuItem: {
-            styleOverrides: {
-              root: {
-                minHeight: 30,
-                fontSize: 11,
-              },
-            },
+            styleOverrides: { root: { minHeight: 30, fontSize: 11 } },
           },
           MuiAutocomplete: {
-            defaultProps: {
-              size: "small",
-            },
+            defaultProps: { size: "small" },
           },
           MuiSwitch: {
-            defaultProps: {
-              size: "small",
-            },
+            defaultProps: { size: "small" },
             styleOverrides: {
-              root: {
-                padding: 6,
+              root: { padding: 6 },
+              switchBase: {
+                "&.Mui-checked": {
+                  color: isLight ? "#2679A8" : "#519BC5",
+                },
+                "&.Mui-checked + .MuiSwitch-track": {
+                  backgroundColor: isLight ? "#7AC6E9" : "#2679A8",
+                },
               },
             },
           },
           MuiChip: {
-            defaultProps: {
-              size: "small",
-            },
-            styleOverrides: {
-              root: {
-                height: 22,
-                fontSize: 11,
-              },
-            },
+            defaultProps: { size: "small" },
+            styleOverrides: { root: { height: 22, fontSize: 11 } },
           },
           MuiTabs: {
             styleOverrides: {
-              root: {
-                minHeight: 30,
-              },
+              root: { minHeight: 30 },
               indicator: {
                 height: 2,
+                background: "linear-gradient(90deg, #2679A8 0%, #883DCF 100%)",
               },
             },
           },
           MuiTab: {
-            defaultProps: {
-              disableRipple: true,
-            },
+            defaultProps: { disableRipple: true },
             styleOverrides: {
               root: {
                 minHeight: 30,
                 padding: "5px 10px",
-                fontSize: 17,
+                fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif',
+                fontSize: 12,
+                fontWeight: 600,
+                "&.Mui-selected": {
+                  color: isLight ? "#16608B" : "#B5E7FD",
+                },
               },
             },
           },
@@ -289,43 +280,44 @@ export default function AppShellLayout() {
             styleOverrides: {
               root: {
                 padding: "10px 14px",
-                fontSize: 16,
-                fontWeight: 600,
+                fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif',
+                fontSize: 15,
+                fontWeight: 700,
+                letterSpacing: "-0.01em",
+                color: isLight ? "#0B4A6F" : "#D9F3FF",
               },
             },
           },
           MuiDialogContent: {
-            styleOverrides: {
-              root: {
-                padding: "10px 14px",
-                fontSize: 11,
-              },
-            },
+            styleOverrides: { root: { padding: "10px 14px", fontSize: 11 } },
           },
           MuiDialogActions: {
-            styleOverrides: {
-              root: {
-                padding: "8px 12px",
-                gap: 6,
-                fontSize: 11,
-              },
-            },
+            styleOverrides: { root: { padding: "8px 12px", gap: 6, fontSize: 11 } },
           },
           MuiTableCell: {
             styleOverrides: {
               root: {
-                borderBottom: `1px solid ${themeMode === "dark" ? "#2a3346" : "#e6e9ef"}`,
+                borderBottom: `1px solid ${isLight ? "rgba(38,121,168,0.10)" : "rgba(81,155,197,0.10)"}`,
                 fontSize: "11px",
               },
               head: {
                 fontWeight: 600,
-                color: themeMode === "dark" ? "#b8c2d5" : "#545963",
-                backgroundColor: themeMode === "dark" ? "#162033" : "#fafbfd",
+                color: isLight ? "#16608B" : "#7AC6E9",
+                backgroundColor: isLight ? "#f8fcff" : "rgba(11,74,111,0.12)",
               },
             },
           },
+          MuiDataGrid: {
+            styleOverrides: {
+              root: { borderRadius: 4 },
+              columnHeaders: { minHeight: "36px !important" },
+              columnHeader: { minHeight: "36px !important" },
+              row: { maxHeight: "30px !important" },
+            },
+          },
         },
-      }),
+      });
+    },
     [themeMode],
   );
 
@@ -404,26 +396,6 @@ export default function AppShellLayout() {
     return [...liveRuns, ...sample].slice(0, 6);
   }, [autonomousRuns?.runs, autonomousTriggerMutation.isPending]);
 
-  const runDetailSteps = useMemo(() => {
-    if (!selectedInfoRun) return [];
-    const status = String(selectedInfoRun.status || "").toLowerCase();
-    const base = [
-      { id: "step_1", label: "Identify impacted alerts and nodes" },
-      { id: "step_2", label: "Evaluate transfer / replenishment options" },
-      { id: "step_3", label: "Create stock transfer or replenishment actions" },
-      { id: "step_4", label: "Link orders to alerts and update status" },
-      { id: "step_5", label: "Validate projection impact and finalize run" },
-    ];
-    let completedSteps = 0;
-    if (status === "completed") completedSteps = base.length;
-    else if (status === "needs_user_guidance") completedSteps = 3;
-    else if (status === "running") completedSteps = 2;
-    return base.map((step, idx) => ({
-      ...step,
-      state: idx < completedSteps ? "done" : status === "running" && idx === completedSteps ? "in_progress" : "pending",
-    }));
-  }, [selectedInfoRun]);
-
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -432,25 +404,17 @@ export default function AppShellLayout() {
         <Box className="ambient-shape ambient-shape-b" />
         <TopHeader
           themeMode={themeMode}
-          collapsed={collapsed}
           onToggleThemeMode={() => setThemeMode((prev) => (prev === "light" ? "dark" : "light"))}
           onOpenSettings={() => setConfigOpen(true)}
           onOpenInformation={() => setInfoOpen(true)}
-          onResetDemo={() => {
-            if (resetDemoMutation.isPending) return;
-            if (!window.confirm("Reset demo data to baseline? This will overwrite current demo state.")) return;
-            resetDemoMutation.mutate();
-          }}
-          resetInProgress={resetDemoMutation.isPending}
         />
-        {/* Spacer so content starts below the fixed black brand strip */}
-        <Box aria-hidden sx={{ flexShrink: 0, height: { xs: 45, md: 50 }, minHeight: { xs: 45, md: 50 } }} />
+        {/* Spacer so content starts below the fixed brand strip */}
+        <Box aria-hidden sx={{ flexShrink: 0, height: { xs: 34, md: 38 }, minHeight: { xs: 34, md: 38 } }} />
         <Box className="app-layout">
-          <Box className="side-nav-shell" sx={{ width: collapsed ? 58 : 228, minWidth: collapsed ? 58 : 228 }}>
+          <Box className="side-nav-shell" sx={{ width: collapsed ? COLLAPSED_NAV_WIDTH : EXPANDED_NAV_WIDTH, minWidth: collapsed ? COLLAPSED_NAV_WIDTH : EXPANDED_NAV_WIDTH }}>
             <LeftNav collapsed={collapsed} onToggleCollapsed={() => setCollapsed((prev) => !prev)} />
           </Box>
           <Box className="main-pane">
-            <Box aria-hidden sx={{ flexShrink: 0, height: { xs: 50, md: 57 }, minHeight: { xs: 50, md: 57 } }} />
             {showGlobalFilterBar ? <GlobalFilterBar filters={filters} setFilters={setFilters} config={config} openAiApiKey={openAiApiKey} /> : null}
             <Box className="main-content-wrap" sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
               <Outlet context={{ filters, setFilters, config, setConfig, openAiApiKey, setOpenAiApiKey } satisfies ShellContextValue} />
@@ -470,9 +434,9 @@ export default function AppShellLayout() {
         />
         <Drawer anchor="right" open={infoOpen} onClose={() => setInfoOpen(false)} PaperProps={{ sx: { width: { xs: "92vw", sm: 460 }, p: 2 } }}>
           <Stack spacing={1.25} sx={{ height: "100%" }}>
-            <Typography variant="h6">Information</Typography>
+            <Typography variant="h6">Agent information desk</Typography>
             <Typography variant="caption" color="text.secondary">
-              Workflow 3 - Fully Autonomous Resolution history and live execution status.
+              Autonomous agent progress: run history, status (completed, needs guidance, running), and actions. Click a run to open the Inventory Diagnostic Agent on the Network page.
             </Typography>
             <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
               <Button
@@ -497,8 +461,11 @@ export default function AppShellLayout() {
                     key={run.id}
                     onClick={() => {
                       if (run.status === "running") return;
-                      setSelectedInfoRun(run);
-                      setInfoRunModalOpen(true);
+                      const preset = mapAutonomousRunStatusToInventoryPreset(String(run.status));
+                      if (preset) {
+                        navigate(`/network?openInventoryAgent=1&inventoryAgentPreset=${preset}`);
+                      }
+                      setInfoOpen(false);
                     }}
                     sx={{
                       border: "1px solid",
@@ -538,7 +505,7 @@ export default function AppShellLayout() {
                       </Typography>
                     ) : (
                       <Typography variant="caption" color="primary.main" sx={{ display: "block", mt: 0.35 }}>
-                        Click to open Inventory Diagnostic Agent details.
+                        Click to open Inventory Diagnostic Agent on the Network page (completed runs show full workflow; guided runs pause at source selection).
                       </Typography>
                     )}
                   </Box>
@@ -547,75 +514,6 @@ export default function AppShellLayout() {
             </Box>
           </Stack>
         </Drawer>
-        <Dialog
-          open={infoRunModalOpen}
-          onClose={() => setInfoRunModalOpen(false)}
-          fullWidth
-          maxWidth="md"
-          slotProps={{ paper: { sx: { minHeight: "62vh" } } }}
-        >
-          <DialogTitle>Inventory Diagnostic Agent</DialogTitle>
-          <DialogContent dividers>
-            {selectedInfoRun ? (
-              <Stack spacing={1.2}>
-                <Typography variant="subtitle2">{selectedInfoRun.id}</Typography>
-                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
-                  <Chip
-                    size="small"
-                    color={
-                      selectedInfoRun.status === "completed"
-                        ? "success"
-                        : selectedInfoRun.status === "needs_user_guidance"
-                          ? "warning"
-                          : "info"
-                    }
-                    label={String(selectedInfoRun.status).replace(/_/g, " ")}
-                  />
-                  <Chip size="small" label={`Alert: ${selectedInfoRun.alert}`} />
-                  <Chip size="small" label={`Actions: ${selectedInfoRun.actions}`} />
-                  <Chip size="small" label={`Qty: ${selectedInfoRun.qty.toLocaleString()}`} />
-                  <Chip size="small" label={`Cost: $${selectedInfoRun.cost.toLocaleString()}`} />
-                </Stack>
-                <Typography variant="body2" color="text.secondary">
-                  {selectedInfoRun.note}
-                </Typography>
-                <Divider />
-                <Typography variant="subtitle2">Execution Steps</Typography>
-                <Stack spacing={0.7}>
-                  {runDetailSteps.map((step) => (
-                    <Box
-                      key={step.id}
-                      sx={(theme) => ({
-                        p: 0.9,
-                        borderRadius: 1,
-                        border: `1px solid ${theme.palette.divider}`,
-                        backgroundColor:
-                          step.state === "done"
-                            ? theme.palette.success.light
-                            : step.state === "in_progress"
-                              ? theme.palette.info.light
-                              : theme.palette.background.paper,
-                        color: step.state === "done" ? theme.palette.success.contrastText : theme.palette.text.primary,
-                      })}
-                    >
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="body2">{step.label}</Typography>
-                        <Chip
-                          size="small"
-                          label={step.state === "done" ? "completed" : step.state === "in_progress" ? "running" : "not complete"}
-                          color={step.state === "done" ? "success" : step.state === "in_progress" ? "info" : "default"}
-                        />
-                      </Stack>
-                    </Box>
-                  ))}
-                </Stack>
-              </Stack>
-            ) : null}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setInfoRunModalOpen(false)}>Close</Button>
-          </DialogActions>
-        </Dialog>
       </Box>
     </ThemeProvider>
   );

@@ -25,8 +25,8 @@ import {
 import { alpha } from "@mui/material/styles";
 import { type GridColDef, type GridRowSelectionModel } from "@mui/x-data-grid";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useOutletContext, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link as RouterLink, useOutletContext, useSearchParams } from "react-router-dom";
 
 import type {
   ReplenishmentOrderCreateRequest,
@@ -46,12 +46,25 @@ import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import ProjectedInventoryWorkbench from "../components/inventory/ProjectedInventoryWorkbench";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
 import { SectionCard } from "../components/shared/UiBits";
+import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import { appendGlobalFilters, globalFiltersKey } from "../types/filters";
 import FilterBuilderDialog from "../components/shared/FilterBuilderDialog";
 import { EMPTY_FILTER_STATE, applyFilterState, type FilterFieldOption, type FilterState } from "../filtering";
 
 function baseOrderParams(filters: ShellContextValue["filters"]) {
   return appendGlobalFilters(new URLSearchParams(), { ...filters, runId: "", category: "", supplier: "", exceptionStatus: "" });
+}
+
+function orderDetailsBaseParams(filters: ShellContextValue["filters"]) {
+  return appendGlobalFilters(new URLSearchParams(), {
+    ...filters,
+    runId: "",
+    category: "",
+    supplier: "",
+    exceptionStatus: "",
+    orderType: [],
+    orderStatus: [],
+  });
 }
 
 type OrderDetailsLevelRow = {
@@ -177,10 +190,17 @@ export default function ReplenishmentPage() {
   const [editNewAlertImpactedNodeId, setEditNewAlertImpactedNodeId] = useState("");
   const [editNewAlertIssueType, setEditNewAlertIssueType] = useState("");
   const filtersKey = globalFiltersKey(filters);
+  const deepLinkedOrderId = (searchParams.get("order_id") ?? "").trim();
+  const deepLinkedTab = (searchParams.get("tab") ?? "").trim().toLowerCase();
 
   const exceptionParams = baseOrderParams(filters);
   exceptionParams.set("exception_only", "true");
-  const allOrderParams = baseOrderParams(filters);
+  const allOrderParams = orderDetailsBaseParams(filters);
+  const deepLinkOnlyOrderParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (deepLinkedOrderId) params.set("order_id", deepLinkedOrderId);
+    return params;
+  }, [deepLinkedOrderId]);
 
   const { data: exceptionData } = useQuery<ReplenishmentOrdersResponse>({
     queryKey: ["replenishment-orders", "exceptions", filtersKey],
@@ -194,14 +214,38 @@ export default function ReplenishmentPage() {
     queryKey: ["replenishment-order-details", "all", filtersKey],
     queryFn: () => fetchReplenishmentOrderDetails(allOrderParams),
   });
+  const { data: deepLinkedOrderData } = useQuery<ReplenishmentOrdersResponse>({
+    queryKey: ["replenishment-orders", "deep-link", deepLinkedOrderId],
+    queryFn: () => fetchReplenishmentOrders(deepLinkOnlyOrderParams),
+    enabled: Boolean(deepLinkedOrderId),
+  });
+  const { data: deepLinkedOrderDetailData } = useQuery<ReplenishmentOrderDetailsResponse>({
+    queryKey: ["replenishment-order-details", "deep-link", deepLinkedOrderId],
+    queryFn: () => fetchReplenishmentOrderDetails(deepLinkOnlyOrderParams),
+    enabled: Boolean(deepLinkedOrderId),
+  });
   const { data: demoAlertsData } = useQuery({
     queryKey: ["demo-alerts"],
     queryFn: fetchDemoAlerts,
   });
 
   const exceptionRows = exceptionData?.rows ?? [];
-  const orderRows = allOrderData?.rows ?? [];
-  const orderDetailRows = allOrderDetailData?.rows ?? [];
+  const baseOrderRows = allOrderData?.rows ?? [];
+  const baseOrderDetailRows = allOrderDetailData?.rows ?? [];
+  const deepLinkedRows = deepLinkedOrderData?.rows ?? [];
+  const deepLinkedDetailRows = deepLinkedOrderDetailData?.rows ?? [];
+  const orderRows = useMemo(() => {
+    const byId = new Map<string, ReplenishmentOrderRecord>();
+    for (const row of baseOrderRows) byId.set(row.order_id, row);
+    for (const row of deepLinkedRows) byId.set(row.order_id, row);
+    return Array.from(byId.values());
+  }, [baseOrderRows, deepLinkedRows]);
+  const orderDetailRows = useMemo(() => {
+    const byId = new Map<number, ReplenishmentOrderDetailRecord>();
+    for (const row of baseOrderDetailRows) byId.set(row.id, row);
+    for (const row of deepLinkedDetailRows) byId.set(row.id, row);
+    return Array.from(byId.values());
+  }, [baseOrderDetailRows, deepLinkedDetailRows]);
   const orderPrimarySkuById = useMemo(() => {
     const map = new Map<string, string>();
     for (const row of orderDetailRows) {
@@ -211,11 +255,11 @@ export default function ReplenishmentPage() {
     }
     return map;
   }, [orderDetailRows]);
-  const deepLinkedOrderId = (searchParams.get("order_id") ?? "").trim();
-  const deepLinkedSku = (searchParams.get("sku") ?? "").trim();
-  const deepLinkedLocation = (searchParams.get("location") ?? "").trim();
-  const deepLinkedSource = (searchParams.get("source") ?? "").trim().toLowerCase();
-  const deepLinkedTab = (searchParams.get("tab") ?? "").trim().toLowerCase();
+  const wantsOpenEdit = useMemo(() => {
+    const v = (searchParams.get("open_edit") ?? searchParams.get("edit_order") ?? "").trim().toLowerCase();
+    return v === "1" || v === "true" || v === "yes";
+  }, [searchParams]);
+  const openedEditFromDeepLinkRef = useRef(false);
   const orderDetailsHref = (orderId: string, sku?: string, location?: string, source?: string) => {
     const params = new URLSearchParams();
     params.set("tab", "order-details");
@@ -300,6 +344,9 @@ export default function ReplenishmentPage() {
     const nextIds = [...new Set(orderDetailsFilteredRows.filter((row) => row.order_id === deepLinkedOrderId).map((row) => row.order_id))];
     setOrderDetailsSelectedOrderIds((prev) => (sameStringArray(prev, nextIds) ? prev : nextIds));
   }, [deepLinkedOrderId, orderDetailsFilteredRows]);
+  useEffect(() => {
+    openedEditFromDeepLinkRef.current = false;
+  }, [deepLinkedOrderId, wantsOpenEdit]);
   const orderHeaderById = useMemo(() => {
     const map = new Map<string, ReplenishmentOrderRecord>();
     for (const row of orderRows) {
@@ -457,12 +504,9 @@ export default function ReplenishmentPage() {
   const selectedOrderDetailRows = useMemo(
     () =>
       orderDetailRows.filter(
-        (row) =>
-          orderDetailsSelectedOrderIds.includes(row.order_id)
-          && (deepLinkedSource !== "projection" || !deepLinkedSku || row.sku === deepLinkedSku)
-          && (deepLinkedSource !== "projection" || !deepLinkedLocation || row.ship_to_node_id === deepLinkedLocation),
+        (row) => orderDetailsSelectedOrderIds.includes(row.order_id),
       ),
-    [deepLinkedLocation, deepLinkedSku, deepLinkedSource, orderDetailRows, orderDetailsSelectedOrderIds],
+    [orderDetailRows, orderDetailsSelectedOrderIds],
   );
   const orderDetailsLevelRows = useMemo<OrderDetailsLevelRow[]>(() => {
     const grouped = new Map<string, OrderDetailsLevelRow>();
@@ -626,14 +670,14 @@ export default function ReplenishmentPage() {
         headerName: "Alert",
         minWidth: 130,
         flex: 0.9,
-        renderCell: (params) => <Link to={`/network?alert_id=${encodeURIComponent(String(params.row.alert_id))}`}>{params.row.alert_id}</Link>,
+        renderCell: (params) => <RouterLink to={`/network?alert_id=${encodeURIComponent(String(params.row.alert_id))}`}>{params.row.alert_id}</RouterLink>,
       },
       {
         field: "order_id",
         headerName: "Order ID",
         minWidth: 140,
         flex: 1,
-        renderCell: (params) => <Link to={orderDetailsHref(String(params.row.order_id))}>{params.row.order_id}</Link>,
+        renderCell: (params) => <RouterLink to={orderDetailsHref(String(params.row.order_id))}>{params.row.order_id}</RouterLink>,
       },
       { field: "order_type", headerName: "Order Type", minWidth: 160, flex: 1.2 },
       { field: "product_count", headerName: "# Products", minWidth: 100, flex: 0.8, type: "number" },
@@ -690,7 +734,7 @@ export default function ReplenishmentPage() {
         headerName: "Order #",
         minWidth: 140,
         flex: 1,
-        renderCell: (params) => <Link to={orderDetailsHref(String(params.row.order_id))}>{params.row.order_id}</Link>,
+        renderCell: (params) => <RouterLink to={orderDetailsHref(String(params.row.order_id))}>{params.row.order_id}</RouterLink>,
       },
       { field: "sku", headerName: "Product", minWidth: 120, flex: 0.9 },
       { field: "order_type", headerName: "Order Type", minWidth: 130, flex: 0.9 },
@@ -736,7 +780,7 @@ export default function ReplenishmentPage() {
     setCreateError("");
     setCreateDialogOpen(true);
   };
-  const openEditDialog = () => {
+  const openEditDialog = useCallback(() => {
     if (!selectedSingleOrder || isSelectedOrderLockedForEdit) return;
     setEditOrderQty(String(selectedSingleOrder.order_qty));
     setEditEta(selectedSingleOrder.eta);
@@ -756,7 +800,16 @@ export default function ReplenishmentPage() {
     setEditBulkQty("");
     setEditError("");
     setEditDialogOpen(true);
-  };
+  }, [selectedSingleOrder, isSelectedOrderLockedForEdit, selectedSingleOrderRawDetails]);
+
+  useEffect(() => {
+    if (!wantsOpenEdit || !deepLinkedOrderId) return;
+    if (openedEditFromDeepLinkRef.current) return;
+    if (!selectedSingleOrder || selectedSingleOrder.order_id !== deepLinkedOrderId) return;
+    if (isSelectedOrderLockedForEdit) return;
+    openedEditFromDeepLinkRef.current = true;
+    openEditDialog();
+  }, [wantsOpenEdit, deepLinkedOrderId, selectedSingleOrder, isSelectedOrderLockedForEdit, openEditDialog]);
   const submitCreateOrder = () => {
     const payloadDetails = toPayloadDetails(createDetails);
     if (!createForm.ship_to_node_id || !createForm.eta || !payloadDetails.length) {
@@ -914,56 +967,31 @@ export default function ReplenishmentPage() {
                 </Stack>
               </Stack>
               {!dashboardCollapsed ? (
-                <div className="alerts-kpi-group-row">
-                  <Box className="alerts-kpi-group-card alerts-kpi-critical">
-                    <Box className="alerts-kpi-group-head">
-                      <Typography className="alerts-kpi-group-title">By Status</Typography>
-                    </Box>
-                    <Stack spacing={0.5}>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Open</Typography><Typography className="alerts-kpi-line-value">{dashboardMetrics.statusCounts.open}</Typography></Box>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">In Progress</Typography><Typography className="alerts-kpi-line-value">{dashboardMetrics.statusCounts.in_progress}</Typography></Box>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Blocked</Typography><Typography className="alerts-kpi-line-value">{dashboardMetrics.statusCounts.blocked}</Typography></Box>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Escalated</Typography><Typography className="alerts-kpi-line-value">{dashboardMetrics.statusCounts.escalated}</Typography></Box>
-                    </Stack>
-                  </Box>
-                  <Box className="alerts-kpi-group-card alerts-kpi-network">
-                    <Box className="alerts-kpi-group-head">
-                      <Typography className="alerts-kpi-group-title">By Actions</Typography>
-                    </Box>
-                    <Stack spacing={0.5}>
-                      {dashboardMetrics.topActions.length ? dashboardMetrics.topActions.map(([action, count]) => (
-                        <Box key={action} className="alerts-kpi-line">
-                          <Typography className="alerts-kpi-line-label">{action}</Typography>
-                          <Typography className="alerts-kpi-line-value">{count}</Typography>
-                        </Box>
-                      )) : (
-                        <Typography className="alerts-kpi-line-label">No actions in current filter.</Typography>
-                      )}
-                    </Stack>
-                  </Box>
-                  <Box className="alerts-kpi-group-card alerts-kpi-demand">
-                    <Box className="alerts-kpi-group-head">
-                      <Typography className="alerts-kpi-group-title">Statistics</Typography>
-                    </Box>
-                    <Stack spacing={0.5}>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Delayed Orders</Typography><Typography className="alerts-kpi-line-value">{dashboardMetrics.delayedOrders}</Typography></Box>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Update Not Possible</Typography><Typography className="alerts-kpi-line-value">{dashboardMetrics.updateNotPossible}</Typography></Box>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Product Lines Impacted</Typography><Typography className="alerts-kpi-line-value">{dashboardMetrics.impactedProductLines}</Typography></Box>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Avg Lead Time</Typography><Typography className="alerts-kpi-line-value">{dashboardMetrics.avgLeadTime.toFixed(2)} d</Typography></Box>
-                    </Stack>
-                  </Box>
-                  <Box className="alerts-kpi-group-card alerts-kpi-money">
-                    <Box className="alerts-kpi-group-head">
-                      <Typography className="alerts-kpi-group-title">Financial & Linkage</Typography>
-                    </Box>
-                    <Stack spacing={0.5}>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Exception Orders</Typography><Typography className="alerts-kpi-line-value">{dashboardMetrics.totalRows}</Typography></Box>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Linked Alerts</Typography><Typography className="alerts-kpi-line-value">{dashboardMetrics.linkedAlerts}</Typography></Box>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Total Order Cost</Typography><Typography className="alerts-kpi-line-value">${Math.round(dashboardMetrics.totalCost).toLocaleString()}</Typography></Box>
-                      <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Outcome</Typography><Typography className="alerts-kpi-line-value">Orders + Exceptions</Typography></Box>
-                    </Stack>
-                  </Box>
-                </div>
+                <KpiCardRow>
+                  <KpiCard title="By Status" tone="critical" items={[
+                    { label: "Open", value: String(dashboardMetrics.statusCounts.open) },
+                    { label: "In Progress", value: String(dashboardMetrics.statusCounts.in_progress) },
+                    { label: "Blocked", value: String(dashboardMetrics.statusCounts.blocked) },
+                    { label: "Escalated", value: String(dashboardMetrics.statusCounts.escalated) },
+                  ]} />
+                  <KpiCard title="By Actions" tone="network" items={
+                    dashboardMetrics.topActions.length
+                      ? dashboardMetrics.topActions.map(([action, count]) => ({ label: action, value: String(count) }))
+                      : [{ label: "No actions", value: "—" }]
+                  } />
+                  <KpiCard title="Statistics" tone="demand" items={[
+                    { label: "Delayed Orders", value: String(dashboardMetrics.delayedOrders) },
+                    { label: "Update Not Possible", value: String(dashboardMetrics.updateNotPossible) },
+                    { label: "Product Lines Impacted", value: String(dashboardMetrics.impactedProductLines) },
+                    { label: "Avg Lead Time", value: `${dashboardMetrics.avgLeadTime.toFixed(2)} d` },
+                  ]} />
+                  <KpiCard title="Financial & Linkage" tone="money" items={[
+                    { label: "Exception Orders", value: String(dashboardMetrics.totalRows) },
+                    { label: "Linked Alerts", value: String(dashboardMetrics.linkedAlerts) },
+                    { label: "Total Order Cost", value: `$${Math.round(dashboardMetrics.totalCost).toLocaleString()}` },
+                    { label: "Outcome", value: "Orders + Exceptions" },
+                  ]} />
+                </KpiCardRow>
               ) : null}
             </SectionCard>
 

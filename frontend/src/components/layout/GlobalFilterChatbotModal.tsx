@@ -87,7 +87,7 @@ export default function GlobalFilterChatbotModal({
   setFilters,
   config,
   openAiApiKey,
-  title = "MEIO Data Assistant",
+  title = "Planning Data Assistant",
   showApplyToGlobalFilter = true,
   embedded = false,
   enableCharts = false,
@@ -502,7 +502,7 @@ export default function GlobalFilterChatbotModal({
   const missingKey = !openAiApiKey.trim();
   const thinking = submitMutation.isPending;
   const promptPreview = latest?.diagnostics?.prompt_used
-    ?? "Prompt preview will be available after you run the first MEIO Data Assistant query.";
+    ?? "Prompt preview will be available after you run the first Planning Data Assistant query.";
   const structuredPrompt = useMemo<PromptSection[]>(() => {
     const raw = (promptPreview || "").trim();
     if (!raw) return [];

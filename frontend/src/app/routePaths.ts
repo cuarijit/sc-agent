@@ -10,7 +10,17 @@ export const ROUTE_PATHS = {
   maintenance: "/maintenance",
   documents: "/documents",
   chat: "/chat",
-  // Demand Analysis module
+  // Demand Planning module
+  demandForecasting: "/demand/forecasting",
+  demandCollaborative: "/demand/collaborative",
+  demandAccuracy: "/demand/accuracy",
+  demandSop: "/demand/sop",
+  demandSupplyIntegration: "/demand/supply-integration",
+  demandFinancial: "/demand/financial",
+  demandTradePromotion: "/demand/trade-promotion",
+  demandAnalytics: "/demand/analytics",
+  demandCustomers: "/demand/customers",
+  // Legacy placeholders
   demandForecastAlerts: "/demand/forecast-alerts",
   demandForecastModification: "/demand/forecast-modification",
   // Agentic AI module

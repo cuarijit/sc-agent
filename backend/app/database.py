@@ -77,8 +77,9 @@ def _resolve_database_url() -> str:
 
 
 DATABASE_URL = _resolve_database_url()
+DATABASE_PATH = _path_from_sqlite_url(DATABASE_URL)
 
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+connect_args = {"check_same_thread": False, "timeout": 30} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()

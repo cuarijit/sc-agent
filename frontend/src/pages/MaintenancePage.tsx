@@ -29,7 +29,7 @@ export default function MaintenancePage() {
         {tab === onDemandTabIndex ? (
           <Stack spacing={1.2} sx={{ mt: 1.2 }}>
             <Typography variant="body2" color="text.secondary">
-              Use the On-Demand Analysis Agent for ad-hoc MEIO database questions and iterative follow-up analysis.
+              Use the On-Demand Analysis Agent for ad-hoc planning database questions and iterative follow-up analysis.
             </Typography>
             <GlobalFilterChatbotModal
               open

@@ -5,7 +5,7 @@ import json
 import math
 import os
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import inspect
@@ -51,6 +51,15 @@ from ..models import (
     SupplierMaster,
     SourcingOption,
     SimulationScenario,
+    DemandForecast,
+    DemandPromotion,
+    DemandConsensusEntry,
+    DemandForecastAccuracy,
+    DemandException,
+    SopCycle,
+    SopReviewItem,
+    FinancialPlan,
+    CustomerHierarchy,
 )
 
 
@@ -809,6 +818,26 @@ def _keywords(text: str) -> str:
     return " ".join(tokens[:32])
 
 
+def _alert_id_excluded_from_bulk_replenishment_seed(alert_id: str) -> bool:
+    """Alerts we pin to dedicated replenishment rows; keep them out of the bulk random assignment."""
+    a = str(alert_id or "")
+    if a.startswith("ALERT-RDC-REVIEW-"):
+        return True
+    return a in ("ALERT-SKUNODE-001", "ALERT-004", "ALERT-016", "ALERT-STORE17-SNACK003")
+
+
+# Pinned demo orders + alert links (same order as appended after bulk reseed).
+_DEMO_PINNED_ORDER_ALERT_IDS: tuple[str, ...] = (
+    "ALERT-RDC-REVIEW-001",
+    "ALERT-RDC-REVIEW-002",
+    "ALERT-RDC-REVIEW-003",
+    "ALERT-SKUNODE-001",
+    "ALERT-004",
+    "ALERT-016",
+    "ALERT-STORE17-SNACK003",
+)
+
+
 def _build_network_alert_rows(
     canonical_keys: list[tuple[str, str, str]],
     lanes: list[NetworkLane],
@@ -856,7 +885,7 @@ def _build_network_alert_rows(
             "impacted_sku": sku_node_sku,
             "impacted_lane_id": lane_ids[1 % len(lane_ids)],
             "effective_from": "2026-03-08",
-            "effective_to": "2026-03-20",
+            "effective_to": None,
             "recommended_action_json": json.dumps({"association": "sku_node", "action": "focus_single_sku_node"}),
         },
         {
@@ -949,6 +978,8 @@ def _build_network_alert_rows(
         elif association == 1:
             target_location = location_nodes[idx % len(location_nodes)]
             target_sku = sorted(location_to_skus[target_location])[idx % len(location_to_skus[target_location])]
+            # Keep ALERT-004 / ALERT-016 active (not date-archived) for network + replenishment demos.
+            sku_node_effective_to = None if idx in (4, 16) else "2026-03-25"
             rows.append(
                 {
                     "alert_id": f"ALERT-{idx:03d}",
@@ -960,7 +991,7 @@ def _build_network_alert_rows(
                     "impacted_sku": target_sku,
                     "impacted_lane_id": lane_id,
                     "effective_from": "2026-03-08",
-                    "effective_to": "2026-03-25",
+                    "effective_to": sku_node_effective_to,
                     "recommended_action_json": json.dumps({"association": "sku_node", "action": "focus_single_sku_node"}),
                 }
             )
@@ -981,7 +1012,114 @@ def _build_network_alert_rows(
                     "recommended_action_json": json.dumps({"association": "sku", "action": "review_all_nodes_for_sku"}),
                 }
             )
+
+    # Dedicated alert: SNACK-003 @ STORE-017
+    rows.append(
+        {
+            "alert_id": "ALERT-STORE17-SNACK003",
+            "alert_type": "service_risk",
+            "severity": "critical",
+            "title": "Service Risk — SNACK-003 @ Store 17",
+            "description": "Critical service risk for Savory Crunch Mix at Store 17 (Florida). Immediate replenishment review required.",
+            "impacted_node_id": "STORE-017",
+            "impacted_sku": "SNACK-003",
+            "impacted_lane_id": lane_ids[0] if lane_ids else None,
+            "effective_from": "2026-03-10",
+            "effective_to": None,
+            "recommended_action_json": json.dumps(
+                {"association": "sku_node", "action": "store_critical_review", "demo": True}
+            ),
+        }
+    )
+
     return rows
+
+
+def _rdc_sku_lane_tuples_for_review_alerts(
+    db: Session,
+    lanes: list[NetworkLane],
+    max_pairs: int = 4,
+) -> list[tuple[str, str, str]]:
+    """Distinct (sku, rdc_dest_node_id, lane_id) pairs where dest is an RDC (sourcing coverage for sku-node alerts)."""
+    node_type_by_id = {row.node_id: str(row.node_type or "").lower() for row in db.query(NetworkNode).all()}
+    lane_ids = [item.lane_id for item in lanes] or ["LANE-0001"]
+    # Prefer distinct SKUs first so demo alerts span multiple products, then fill with extra RDC nodes.
+    rows = (
+        db.query(NetworkSourcingRule)
+        .order_by(NetworkSourcingRule.sku.asc(), NetworkSourcingRule.dest_node_id.asc())
+        .all()
+    )
+    rdc_rows = [
+        row
+        for row in rows
+        if str(node_type_by_id.get(row.dest_node_id, "")).startswith("rdc")
+    ]
+    out: list[tuple[str, str, str]] = []
+    seen_pair: set[tuple[str, str]] = set()
+    used_skus: set[str] = set()
+
+    def try_append(row: NetworkSourcingRule) -> bool:
+        key = (row.sku, row.dest_node_id)
+        if key in seen_pair:
+            return False
+        seen_pair.add(key)
+        lane_id = lane_ids[len(out) % len(lane_ids)]
+        out.append((row.sku, row.dest_node_id, lane_id))
+        used_skus.add(row.sku)
+        return True
+
+    for row in rdc_rows:
+        if row.sku in used_skus:
+            continue
+        if try_append(row) and len(out) >= max_pairs:
+            return out
+    for row in rdc_rows:
+        if try_append(row) and len(out) >= max_pairs:
+            break
+    return out
+
+
+def _append_rdc_critical_review_alert_rows(
+    db: Session,
+    rows: list[dict[str, str | None]],
+    lanes: list[NetworkLane],
+) -> None:
+    """Extra critical SKU@RDC alerts for replenishment 'needs review' demo; requires matching sourcing rows."""
+    pairs = _rdc_sku_lane_tuples_for_review_alerts(db, lanes, max_pairs=3)
+    if not pairs:
+        return
+    fixed_ids = [
+        "ALERT-RDC-REVIEW-001",
+        "ALERT-RDC-REVIEW-002",
+        "ALERT-RDC-REVIEW-003",
+    ]
+    existing = {str(r.get("alert_id")) for r in rows}
+    for idx, alert_id in enumerate(fixed_ids):
+        if idx >= len(pairs):
+            break
+        if alert_id in existing:
+            continue
+        sku, rdc_node, lane_id = pairs[idx]
+        rows.append(
+            {
+                "alert_id": alert_id,
+                "alert_type": "service_risk",
+                "severity": "critical",
+                "title": f"Critical RDC service risk — {sku} @ {rdc_node}",
+                "description": (
+                    "Seeded critical alert at an RDC: review open replenishment exceptions tied to this SKU and node."
+                ),
+                "impacted_node_id": rdc_node,
+                "impacted_sku": sku,
+                "impacted_lane_id": lane_id,
+                "effective_from": "2026-03-10",
+                "effective_to": "2026-04-15",
+                "recommended_action_json": json.dumps(
+                    {"association": "sku_node", "action": "rdc_critical_review", "demo": True}
+                ),
+            }
+        )
+        existing.add(alert_id)
 
 
 def _alert_has_coverage(alert: NetworkAlert, source_rows: list[NetworkSourcingRule]) -> bool:
@@ -1005,6 +1143,7 @@ def _reseed_network_alerts(db: Session) -> None:
         return
     db.query(NetworkAlert).delete()
     rows = _build_network_alert_rows(canonical_keys, lanes)
+    _append_rdc_critical_review_alert_rows(db, rows, lanes)
     db.add_all(
         [
             NetworkAlert(
@@ -1171,7 +1310,10 @@ def _matching_sourcing_rows_for_alert(
 
 def _reseed_replenishment_orders(db: Session) -> None:
     source_rows = db.query(NetworkSourcingRule).all()
-    alerts = db.query(NetworkAlert).order_by(NetworkAlert.alert_id.asc()).all()
+    all_alerts = db.query(NetworkAlert).order_by(NetworkAlert.alert_id.asc()).all()
+    main_alerts = [item for item in all_alerts if not _alert_id_excluded_from_bulk_replenishment_seed(item.alert_id)]
+    # Reserve pinned demo alerts for dedicated replenishment rows (not the bulk generator).
+    alerts = main_alerts if main_alerts else all_alerts
     nodes = {row.node_id: row for row in db.query(NetworkNode).all()}
     if not source_rows or not alerts:
         return
@@ -1241,6 +1383,7 @@ def _reseed_replenishment_orders(db: Session) -> None:
     def is_delayed_exception(exception_idx: int) -> bool:
         return (exception_idx * 7 + 13) % 100 < 42
 
+    db.query(ReplenishmentOrderAlertLink).delete()
     db.query(ReplenishmentOrderDetail).delete()
     db.query(ReplenishmentOrder).delete()
     records: list[ReplenishmentOrder] = []
@@ -1334,6 +1477,109 @@ def _reseed_replenishment_orders(db: Session) -> None:
             )
     db.add_all(records)
     db.add_all(detail_records)
+    _append_pinned_demo_alert_orders(db, total_target)
+
+
+def _append_pinned_demo_alert_orders(db: Session, base_order_count: int) -> None:
+    """Exception orders pinned to demo alerts (RDC review + selected network alerts) with matching sourcing + links."""
+    alert_ids = list(_DEMO_PINNED_ORDER_ALERT_IDS)
+    alerts = {row.alert_id: row for row in db.query(NetworkAlert).filter(NetworkAlert.alert_id.in_(alert_ids)).all()}
+    if not alerts:
+        return
+    source_rows = db.query(NetworkSourcingRule).all()
+    nodes = {row.node_id: row for row in db.query(NetworkNode).all()}
+    action_map = {
+        "delivery_delays": "expedite_shipment",
+        "logistics_impact": "reroute_lane",
+        "production_issue": "shift_production",
+    }
+    # open / blocked / escalated read as "needs review" in the replenishment UI
+    review_statuses = ["open", "blocked", "escalated"]
+    review_reasons = ["delivery_delays", "logistics_impact", "production_issue"]
+    now_iso = datetime.utcnow().replace(microsecond=0).isoformat()
+    extra_orders: list[ReplenishmentOrder] = []
+    extra_details: list[ReplenishmentOrderDetail] = []
+    extra_links: list[ReplenishmentOrderAlertLink] = []
+    pin_idx = 0
+    for alert_id in alert_ids:
+        alert = alerts.get(alert_id)
+        if not alert or not alert.impacted_node_id or not alert.impacted_sku:
+            continue
+        source = next(
+            (
+                r
+                for r in source_rows
+                if r.sku == alert.impacted_sku and r.dest_node_id == alert.impacted_node_id
+            ),
+            None,
+        )
+        if not source:
+            continue
+        ship_to = source.dest_node_id
+        ship_from = source.primary_source_node_id or source.parent_location_node_id or source.secondary_source_node_id
+        if not ship_from:
+            ship_from = next((r.parent_location_node_id for r in source_rows if r.parent_location_node_id), "PLANT-001")
+        region = nodes[ship_to].region if ship_to in nodes else "UNKNOWN"
+        seq = base_order_count + pin_idx + 1
+        order_id_value = f"RO-{seq:05d}"
+        status = review_statuses[pin_idx % len(review_statuses)]
+        reason = review_reasons[pin_idx % len(review_reasons)]
+        action = action_map.get(reason, "execute_planned_replenishment")
+        sku = alert.impacted_sku
+        total_order_qty = round(185.0 + pin_idx * 22.5, 2)
+        extra_orders.append(
+            ReplenishmentOrder(
+                order_id=order_id_value,
+                alert_id=alert.alert_id,
+                order_type="Stock Transfer",
+                status=status,
+                is_exception=True,
+                exception_reason=reason,
+                alert_action_taken=action,
+                order_created_by="agent",
+                ship_to_node_id=ship_to,
+                ship_from_node_id=ship_from,
+                sku=sku,
+                product_count=1,
+                order_qty=total_order_qty,
+                region=region,
+                order_cost=round(980.0 + pin_idx * 41.0, 2),
+                lead_time_days=round(float(source.explicit_lead_time_days or 3.5) + 1.2, 2),
+                delivery_delay_days=float(2 + pin_idx),
+                logistics_impact="high",
+                production_impact="medium",
+                transit_impact="medium",
+                update_possible=True,
+                created_at=f"2026-03-{12 + pin_idx:02d}T10:15:00",
+                eta=f"2026-04-{18 + pin_idx:02d}",
+            )
+        )
+        extra_details.append(
+            ReplenishmentOrderDetail(
+                order_id=order_id_value,
+                sku=sku,
+                ship_to_node_id=ship_to,
+                ship_from_node_id=ship_from,
+                order_qty=total_order_qty,
+            )
+        )
+        extra_links.append(
+            ReplenishmentOrderAlertLink(
+                order_id=order_id_value,
+                alert_id=alert.alert_id,
+                link_status="active",
+                linked_scope="order",
+                source_node_id=ship_to,
+                created_at=now_iso,
+            )
+        )
+        pin_idx += 1
+    if extra_orders:
+        db.add_all(extra_orders)
+    if extra_details:
+        db.add_all(extra_details)
+    if extra_links:
+        db.add_all(extra_links)
 
 
 def _ensure_replenishment_order_details(db: Session) -> None:
@@ -1401,6 +1647,229 @@ def _ensure_replenishment_order_details(db: Session) -> None:
                     order_qty=qtys[detail_idx],
                 )
             )
+
+
+def _seed_demand_planning(db: Session) -> None:
+    """Seed demand planning / IBP tables using existing master data."""
+    if db.query(DemandForecast).count() > 0:
+        return
+
+    products = db.query(ProductMaster).all()
+    locations = db.query(LocationMaster).all()
+    if not products or not locations:
+        return
+
+    skus = [p.sku for p in products]
+    locs = [loc.code for loc in locations]
+    base_week = date(2026, 3, 8)
+    weeks = [(base_week + timedelta(days=7 * i)).isoformat() for i in range(12)]
+    months = ["2026-03", "2026-04", "2026-05"]
+
+    customers = [
+        ("CUST-DIRECT-001", "Costco Wholesale", None, "direct", "club", "West", "BT-001", "ST-001", "direct"),
+        ("CUST-DIRECT-002", "Whole Foods Market", None, "direct", "grocery", "Southeast", "BT-002", "ST-002", "direct"),
+        ("CUST-DIRECT-003", "Target", None, "direct", "mass", "Midwest", "BT-003", "ST-003", "direct"),
+        ("CUST-DIRECT-004", "Sprouts Farmers Market", None, "direct", "specialty", "West", "BT-004", "ST-004", "direct"),
+        ("CUST-INDIRECT-005", "Costco Southwest Region", "CUST-DIRECT-001", "indirect", "club", "South", "BT-001", "ST-005", "indirect"),
+        ("CUST-INDIRECT-006", "Costco Northwest Region", "CUST-DIRECT-001", "indirect", "club", "West", "BT-001", "ST-006", "indirect"),
+        ("CUST-INDIRECT-007", "Whole Foods Northeast", "CUST-DIRECT-002", "indirect", "grocery", "Northeast", "BT-002", "ST-007", "indirect"),
+        ("CUST-INDIRECT-008", "Target Midwest Stores", "CUST-DIRECT-003", "indirect", "mass", "Midwest", "BT-003", "ST-008", "indirect"),
+        ("CUST-BROKER-009", "UNFI Distribution", None, "broker", "natural", "Northeast", "BT-009", "ST-009", "direct"),
+        ("CUST-BROKER-010", "KeHE Distributors", None, "broker", "natural", "West", "BT-010", "ST-010", "direct"),
+    ]
+    for cid, cname, parent, ctype, channel, region, bt, st, plevel in customers:
+        db.add(CustomerHierarchy(
+            customer_id=cid, customer_name=cname, parent_customer_id=parent,
+            customer_type=ctype, channel=channel, region=region,
+            bill_to=bt, sold_to=st, planning_level=plevel,
+        ))
+    db.flush()
+
+    forecast_records = []
+    accuracy_records = []
+    for si, sku in enumerate(skus):
+        sku_seed = sum(ord(c) for c in sku) % 11
+        for li, loc in enumerate(locs):
+            demand_base = 80.0 + sku_seed * 3.5 + li * 2.0
+            for wi, ws in enumerate(weeks):
+                season = 1.0 + 0.08 * math.sin((wi + sku_seed) * (math.pi / 6))
+                promo_in_week = wi in (4, 5) and si < 4
+                lift = 0.20 if promo_in_week else 0.0
+                baseline = round(demand_base * season, 1)
+                promo_lift = round(baseline * lift, 1)
+                noise = ((si + li + wi) % 7 - 3) * 2.5
+                actual = round(max(0, baseline + promo_lift + noise), 1)
+                consensus = round(baseline + promo_lift * 0.9, 1)
+                final = round(baseline + promo_lift, 1)
+                forecast_records.append(DemandForecast(
+                    sku=sku, location=loc, week_start=ws,
+                    baseline_qty=baseline, promo_lift_qty=promo_lift,
+                    consensus_qty=consensus, final_forecast_qty=final,
+                    actual_qty=actual, forecast_source="statistical",
+                    updated_by="system", updated_at=f"{ws}T08:00:00",
+                ))
+                if actual > 0:
+                    error = abs(final - actual) / actual * 100
+                    bias_val = (final - actual) / actual * 100
+                else:
+                    error = 0.0
+                    bias_val = 0.0
+                accuracy_records.append(DemandForecastAccuracy(
+                    sku=sku, location=loc, week_start=ws,
+                    forecast_qty=final, actual_qty=actual,
+                    mape=round(error, 1), bias=round(bias_val, 1),
+                    wmape=round(error * 0.95, 1),
+                    tracking_signal=round(bias_val / max(1, error) * 2.0, 2),
+                ))
+    db.add_all(forecast_records)
+    db.add_all(accuracy_records)
+    db.flush()
+
+    promo_records = []
+    promo_configs = [
+        ("PROMO-001", "Spring Club Display", "CHOC-001", "DC-ATL", "CUST-DIRECT-001", "direct", "club"),
+        ("PROMO-002", "Protein Bar BOGO", "BAR-002", "DC-CHI", "CUST-DIRECT-003", "direct", "mass"),
+        ("PROMO-003", "Savory Snack Endcap", "SNACK-003", "DC-LAX", "CUST-DIRECT-004", "direct", "specialty"),
+        ("PROMO-004", "Mint Gum Checkout Display", "GUM-004", "DC-NJ", "CUST-DIRECT-002", "direct", "grocery"),
+        ("PROMO-005", "Summer Hydration Push", "WATER-006", "DC-MIA", "CUST-DIRECT-002", "direct", "grocery"),
+        ("PROMO-006", "Granola Family Pack Feature", "CEREAL-005", "STORE-DEN", "CUST-BROKER-009", "broker", "natural"),
+        ("PROMO-007", "Club Holiday Promo", "CHOC-001", "DC-ATL", "CUST-INDIRECT-005", "indirect", "club"),
+        ("PROMO-008", "Protein Bar Shipper", "BAR-002", "DC-CHI", "CUST-INDIRECT-008", "indirect", "mass"),
+    ]
+    statuses = ["active", "planned", "completed", "planned", "active", "completed", "planned", "active"]
+    for idx, (pid, pname, sku, loc, cust, ctype, chan) in enumerate(promo_configs):
+        base_vol = 500.0 + idx * 120
+        lift_pct = 15.0 + idx * 3.0
+        promo_records.append(DemandPromotion(
+            promo_id=pid, promo_name=pname, sku=sku, location=loc,
+            customer=cust, customer_type=ctype, channel=chan,
+            start_week=weeks[4], end_week=weeks[6],
+            base_volume=base_vol, lift_percent=lift_pct,
+            lift_volume=round(base_vol * lift_pct / 100, 0),
+            trade_spend=round(2000 + idx * 500, 0),
+            roi=round(1.2 + idx * 0.15, 2),
+            status=statuses[idx],
+            syndicated_source="IRI" if idx % 2 == 0 else "Nielsen",
+            historical_performance=round(0.85 + (idx % 4) * 0.03, 2),
+        ))
+    db.add_all(promo_records)
+    db.flush()
+
+    sop_cycles = [
+        ("SOP-2026-03", "March 2026 S&OP Cycle", "2026-03", "completed", "2026-03-03", "2026-03-10", "2026-03-14", "2026-03-17", True, "VP Supply Chain"),
+        ("SOP-2026-04", "April 2026 S&OP Cycle", "2026-04", "in_review", "2026-04-01", "2026-04-08", "2026-04-12", "2026-04-15", False, None),
+        ("SOP-2026-05", "May 2026 S&OP Cycle", "2026-05", "planning", None, None, None, None, False, None),
+    ]
+    for cid, cname, cmonth, cstatus, dr, sr, ps, es, approved, approver in sop_cycles:
+        db.add(SopCycle(
+            cycle_id=cid, cycle_name=cname, cycle_month=cmonth, status=cstatus,
+            demand_review_date=dr, supply_review_date=sr, pre_sop_date=ps,
+            exec_sop_date=es, consensus_approved=approved, approved_by=approver,
+            notes=f"Standard monthly {cname}",
+        ))
+    db.flush()
+
+    consensus_records = []
+    for si, sku in enumerate(skus[:4]):
+        for li, loc in enumerate(locs[:3]):
+            for wi in range(4):
+                ws = weeks[wi]
+                base = 80.0 + si * 15 + li * 5
+                sales = round(base * (1.05 + (si + wi) % 3 * 0.02), 1)
+                customer_inp = round(base * (0.95 + (li + wi) % 3 * 0.03), 1)
+                sc_inp = round(base * (1.0 + (si + li) % 3 * 0.01), 1)
+                mkt_inp = round(base * (1.08 + wi % 2 * 0.04), 1)
+                consensus = round((sales + customer_inp + sc_inp + mkt_inp) / 4, 1)
+                var_pct = round((max(sales, customer_inp, sc_inp, mkt_inp) - min(sales, customer_inp, sc_inp, mkt_inp)) / consensus * 100, 1)
+                consensus_records.append(DemandConsensusEntry(
+                    cycle_id="SOP-2026-04", sku=sku, location=loc, week_start=ws,
+                    sales_input=sales, customer_input=customer_inp,
+                    supply_chain_input=sc_inp, marketing_input=mkt_inp,
+                    consensus_qty=consensus, variance_pct=var_pct,
+                    status="draft" if wi > 2 else "approved",
+                    notes=f"Auto-generated consensus for {sku} at {loc}",
+                ))
+    db.add_all(consensus_records)
+    db.flush()
+
+    review_items = []
+    review_topics = [
+        ("demand_review", "Forecast variance exceeds threshold", "Demand Planner"),
+        ("supply_review", "Capacity constraint at source node", "Supply Planner"),
+        ("pre_sop", "Gap between demand and supply plan", "S&OP Lead"),
+        ("exec_sop", "Executive decision required on allocation", "VP Operations"),
+    ]
+    for si, sku in enumerate(skus[:3]):
+        for ri, (rtype, topic, owner) in enumerate(review_topics):
+            review_items.append(SopReviewItem(
+                cycle_id="SOP-2026-04", review_type=rtype,
+                sku=sku, location=locs[ri % len(locs)],
+                topic=f"{topic} - {sku}",
+                gap_qty=round(50 + si * 20 + ri * 15, 0),
+                action_required=f"Review and resolve {rtype.replace('_', ' ')} item for {sku}",
+                owner=owner,
+                status="open" if ri > 1 else "resolved",
+                due_date=f"2026-04-{10 + ri * 3:02d}",
+            ))
+    db.add_all(review_items)
+    db.flush()
+
+    exception_records = []
+    exc_types = ["high_deviation", "trend_break", "new_product_miss", "promo_miss", "bias_alert", "tracking_signal_breach"]
+    severities = ["critical", "high", "medium", "low"]
+    for ei in range(24):
+        sku = skus[ei % len(skus)]
+        loc = locs[ei % len(locs)]
+        exc_type = exc_types[ei % len(exc_types)]
+        sev = severities[ei % len(severities)]
+        week = weeks[ei % len(weeks)]
+        forecast_qty = 100.0 + ei * 8
+        dev = 25.0 + ei * 3
+        actual_qty = round(forecast_qty * (1 + (dev if ei % 2 == 0 else -dev) / 100), 1)
+        exception_records.append(DemandException(
+            exception_id=f"DEXC-{ei + 1:03d}",
+            sku=sku, location=loc, week_start=week,
+            exception_type=exc_type, severity=sev,
+            deviation_pct=round(dev, 1),
+            forecast_qty=forecast_qty, actual_qty=actual_qty,
+            root_cause="Under investigation" if ei % 3 != 0 else f"Root cause identified: {exc_type}",
+            resolution=None if ei % 2 == 0 else "Adjusted forecast in next cycle",
+            status="open" if ei % 3 != 2 else "resolved",
+            assigned_to=["Demand Planner", "S&OP Lead", "Supply Planner", "Marketing"][ei % 4],
+            created_at=f"2026-03-{(ei % 28) + 1:02d}T09:{ei % 60:02d}:00",
+        ))
+    db.add_all(exception_records)
+    db.flush()
+
+    fin_records = []
+    price_per_unit = {"CHOC-001": 8.50, "BAR-002": 12.00, "SNACK-003": 6.75, "GUM-004": 4.25, "CEREAL-005": 9.00, "WATER-006": 5.50}
+    cogs_pct = {"CHOC-001": 0.52, "BAR-002": 0.48, "SNACK-003": 0.55, "GUM-004": 0.42, "CEREAL-005": 0.58, "WATER-006": 0.45}
+    for sku in skus:
+        price = price_per_unit.get(sku, 7.0)
+        cpct = cogs_pct.get(sku, 0.50)
+        for loc in locs:
+            for month in months:
+                vol = round(300 + sum(ord(c) for c in sku + loc) % 200 + (months.index(month)) * 20, 0)
+                rev = round(vol * price, 2)
+                cogs_val = round(rev * cpct, 2)
+                margin = round(rev - cogs_val, 2)
+                margin_pct_val = round(margin / rev * 100, 1) if rev else 0.0
+                tspend = round(vol * 0.05 * price, 2)
+                for ptype in ("forecast", "actual"):
+                    multiplier = 1.0 if ptype == "forecast" else (0.92 + (ord(sku[0]) % 5) * 0.03)
+                    fin_records.append(FinancialPlan(
+                        sku=sku, location=loc, month=month,
+                        volume_units=round(vol * multiplier, 0),
+                        revenue=round(rev * multiplier, 2),
+                        cogs=round(cogs_val * multiplier, 2),
+                        gross_margin=round(margin * multiplier, 2),
+                        margin_pct=margin_pct_val,
+                        trade_spend=round(tspend * multiplier, 2),
+                        net_revenue=round((rev - tspend) * multiplier, 2),
+                        plan_type=ptype, version="working",
+                    ))
+    db.add_all(fin_records)
+    db.flush()
 
 
 def _schema_is_compatible() -> bool:
@@ -1485,6 +1954,7 @@ def init_database(db: Session) -> None:
                 and network_pos_count == 0
             ):
                 _seed_network_data(db)
+                _ensure_critical_alerts_active_and_linked(db)
                 db.commit()
             else:
                 reset_and_seed(db)
@@ -1507,6 +1977,7 @@ def init_database(db: Session) -> None:
                 db.commit()
             _align_projection_source_of_truth(db)
             _ensure_replenishment_order_details(db)
+            _seed_demand_planning(db)
             db.commit()
         return
     if (
@@ -1714,6 +2185,7 @@ def init_database(db: Session) -> None:
     _seed_network_data(db)
     _sync_parameter_data_from_sourcing(db)
     _align_projection_source_of_truth(db)
+    _seed_demand_planning(db)
     db.commit()
 
 
@@ -2204,6 +2676,88 @@ def _align_projection_source_of_truth(db: Session) -> None:
         target_detail.ship_from_node_id = target_order.ship_from_node_id
         target_detail.order_qty = target_order.order_qty
 
+    # Associate projection order RO-PROJ-0004-01 with RDC critical review alert 003 (sourcing-aligned).
+    proj_rdc_order_id = "RO-PROJ-0004-01"
+    proj_rdc_alert_id = "ALERT-RDC-REVIEW-003"
+    rda = db.query(NetworkAlert).filter(NetworkAlert.alert_id == proj_rdc_alert_id).first()
+    po = db.query(ReplenishmentOrder).filter(ReplenishmentOrder.order_id == proj_rdc_order_id).first()
+    if rda and po and rda.impacted_sku and rda.impacted_node_id:
+        src = next(
+            (
+                r
+                for r in sourcing_rows
+                if r.sku == rda.impacted_sku and r.dest_node_id == rda.impacted_node_id
+            ),
+            None,
+        )
+        if src:
+            po.alert_id = proj_rdc_alert_id
+            po.ship_to_node_id = src.dest_node_id
+            ship_from = src.primary_source_node_id or src.parent_location_node_id or src.secondary_source_node_id
+            po.ship_from_node_id = ship_from or "CDC-001"
+            po.sku = rda.impacted_sku
+            po.region = region_by_id.get(src.dest_node_id)
+            pd_row = db.query(ReplenishmentOrderDetail).filter(ReplenishmentOrderDetail.order_id == proj_rdc_order_id).first()
+            if pd_row:
+                pd_row.sku = rda.impacted_sku
+                pd_row.ship_to_node_id = src.dest_node_id
+                pd_row.ship_from_node_id = po.ship_from_node_id
+            db.query(ReplenishmentOrderAlertLink).filter(ReplenishmentOrderAlertLink.order_id == proj_rdc_order_id).delete(
+                synchronize_session=False
+            )
+            db.add(
+                ReplenishmentOrderAlertLink(
+                    order_id=proj_rdc_order_id,
+                    alert_id=proj_rdc_alert_id,
+                    link_status="active",
+                    linked_scope="order",
+                    source_node_id=src.dest_node_id,
+                    created_at=datetime.utcnow().replace(microsecond=0).isoformat(),
+                )
+            )
+
+    # Associate projection order RO-PROJ-0044-01 with RDC critical review alert 001 (mark as exception so it renders red).
+    proj_rdc2_order_id = "RO-PROJ-0044-01"
+    proj_rdc2_alert_id = "ALERT-RDC-REVIEW-001"
+    rda2 = db.query(NetworkAlert).filter(NetworkAlert.alert_id == proj_rdc2_alert_id).first()
+    po2 = db.query(ReplenishmentOrder).filter(ReplenishmentOrder.order_id == proj_rdc2_order_id).first()
+    if rda2 and po2:
+        po2.alert_id = proj_rdc2_alert_id
+        po2.is_exception = True
+        po2.exception_reason = "service_risk"
+        po2.alert_action_taken = "rdc_critical_review"
+        po2.logistics_impact = "high"
+        po2.update_possible = False
+        if rda2.impacted_sku and rda2.impacted_node_id:
+            src2 = next(
+                (r for r in sourcing_rows if r.sku == rda2.impacted_sku and r.dest_node_id == rda2.impacted_node_id),
+                None,
+            )
+            if src2:
+                po2.ship_to_node_id = src2.dest_node_id
+                ship_from2 = src2.primary_source_node_id or src2.parent_location_node_id or src2.secondary_source_node_id
+                po2.ship_from_node_id = ship_from2 or "CDC-001"
+                po2.sku = rda2.impacted_sku
+                po2.region = region_by_id.get(src2.dest_node_id)
+                pd2 = db.query(ReplenishmentOrderDetail).filter(ReplenishmentOrderDetail.order_id == proj_rdc2_order_id).first()
+                if pd2:
+                    pd2.sku = rda2.impacted_sku
+                    pd2.ship_to_node_id = src2.dest_node_id
+                    pd2.ship_from_node_id = po2.ship_from_node_id
+        db.query(ReplenishmentOrderAlertLink).filter(ReplenishmentOrderAlertLink.order_id == proj_rdc2_order_id).delete(
+            synchronize_session=False
+        )
+        db.add(
+            ReplenishmentOrderAlertLink(
+                order_id=proj_rdc2_order_id,
+                alert_id=proj_rdc2_alert_id,
+                link_status="active",
+                linked_scope="order",
+                source_node_id=po2.ship_to_node_id,
+                created_at=datetime.utcnow().replace(microsecond=0).isoformat(),
+            )
+        )
+
     # Parameter exception examples for profile pairs shown in projection parameter panel.
     profile_exception_map = {
         "stockout_retail": ("lead_time_days", "stale", "2", "4"),
@@ -2248,7 +2802,81 @@ def _align_projection_source_of_truth(db: Session) -> None:
             existing.impact_summary = impact
             existing.status = "open"
 
+    _ensure_critical_alerts_active_and_linked(db)
     db.commit()
+
+
+def _ensure_critical_alerts_active_and_linked(db: Session) -> None:
+    critical_alerts = (
+        db.query(NetworkAlert)
+        .filter(NetworkAlert.severity.isnot(None))
+        .all()
+    )
+    critical_alerts = [row for row in critical_alerts if str(row.severity or "").strip().lower() == "critical"]
+    if not critical_alerts:
+        return
+
+    orders = db.query(ReplenishmentOrder).order_by(ReplenishmentOrder.created_at.desc(), ReplenishmentOrder.order_id.asc()).all()
+    if not orders:
+        return
+
+    orders_by_sku_node: dict[tuple[str, str], ReplenishmentOrder] = {}
+    orders_by_sku: dict[str, ReplenishmentOrder] = {}
+    for order in orders:
+        sku = str(order.sku or "").strip()
+        node = str(order.ship_to_node_id or "").strip()
+        if sku and node and (sku, node) not in orders_by_sku_node:
+            orders_by_sku_node[(sku, node)] = order
+        if sku and sku not in orders_by_sku:
+            orders_by_sku[sku] = order
+
+    changed = False
+    now_iso = datetime.utcnow().replace(microsecond=0).isoformat()
+    for alert in critical_alerts:
+        alert_id = str(alert.alert_id or "").strip()
+        if not alert_id:
+            continue
+
+        if alert.effective_to:
+            alert.effective_to = None
+            changed = True
+
+        links = (
+            db.query(ReplenishmentOrderAlertLink)
+            .filter(ReplenishmentOrderAlertLink.alert_id == alert_id)
+            .order_by(ReplenishmentOrderAlertLink.created_at.asc(), ReplenishmentOrderAlertLink.id.asc())
+            .all()
+        )
+        active_links = [item for item in links if str(item.link_status or "").strip().lower() == "active"]
+        if active_links:
+            continue
+
+        if links:
+            first = links[0]
+            first.link_status = "active"
+            first.fixed_at = None
+            first.fixed_by = None
+            first.created_at = first.created_at or now_iso
+            changed = True
+            continue
+
+        sku = str(alert.impacted_sku or "").strip()
+        node = str(alert.impacted_node_id or "").strip()
+        candidate = orders_by_sku_node.get((sku, node)) or (orders_by_sku.get(sku) if sku else None) or orders[0]
+        db.add(
+            ReplenishmentOrderAlertLink(
+                order_id=candidate.order_id,
+                alert_id=alert_id,
+                link_status="active",
+                linked_scope="order",
+                source_node_id=node or candidate.ship_to_node_id,
+                created_at=now_iso,
+            )
+        )
+        changed = True
+
+    if changed:
+        db.flush()
 
 
 def reseed_network_only(db: Session) -> dict[str, int]:
@@ -2341,6 +2969,15 @@ def reset_and_seed(db: Session) -> dict[str, int]:
         ProductMaster,
         LocationMaster,
         SupplierMaster,
+        DemandForecast,
+        DemandPromotion,
+        DemandConsensusEntry,
+        DemandForecastAccuracy,
+        DemandException,
+        SopCycle,
+        SopReviewItem,
+        FinancialPlan,
+        CustomerHierarchy,
     ]:
         db.query(model).delete()
     db.commit()

@@ -571,6 +571,8 @@ class ReplenishmentOrderDetailInput(BaseModel):
 class ReplenishmentOrderCreateRequest(BaseModel):
     order_id: str | None = None
     alert_id: str | None = None
+    """When False, order is created with no alert_id and no replenishment_order_alert_links row (e.g. Inventory Diagnostic Agent)."""
+    associate_alert: bool = True
     order_type: str = "Stock Transfer"
     status: str = "created"
     is_exception: bool = False
@@ -789,3 +791,209 @@ class DemoResetResponse(BaseModel):
     status: str
     message: str
     seeded: dict[str, int]
+
+
+# ---------------------------------------------------------------------------
+# Demand Planning / IBP schemas
+# ---------------------------------------------------------------------------
+
+class DemandForecastRecord(BaseModel):
+    id: int
+    sku: str
+    location: str
+    week_start: str
+    baseline_qty: float
+    promo_lift_qty: float
+    consensus_qty: float
+    final_forecast_qty: float
+    actual_qty: float
+    forecast_source: str
+    updated_by: str | None = None
+    updated_at: str | None = None
+
+
+class DemandForecastResponse(BaseModel):
+    rows: list[DemandForecastRecord]
+    total: int
+
+
+class DemandPromotionRecord(BaseModel):
+    id: int
+    promo_id: str
+    promo_name: str
+    sku: str
+    location: str
+    customer: str
+    customer_type: str
+    channel: str
+    start_week: str
+    end_week: str
+    base_volume: float
+    lift_percent: float
+    lift_volume: float
+    trade_spend: float
+    roi: float
+    status: str
+    syndicated_source: str | None = None
+    historical_performance: float | None = None
+
+
+class DemandPromotionResponse(BaseModel):
+    rows: list[DemandPromotionRecord]
+    total: int
+
+
+class DemandConsensusRecord(BaseModel):
+    id: int
+    cycle_id: str
+    sku: str
+    location: str
+    week_start: str
+    sales_input: float
+    customer_input: float
+    supply_chain_input: float
+    marketing_input: float
+    consensus_qty: float
+    variance_pct: float
+    status: str
+    notes: str | None = None
+
+
+class DemandConsensusResponse(BaseModel):
+    rows: list[DemandConsensusRecord]
+    total: int
+
+
+class DemandForecastAccuracyRecord(BaseModel):
+    id: int
+    sku: str
+    location: str
+    week_start: str
+    forecast_qty: float
+    actual_qty: float
+    mape: float
+    bias: float
+    wmape: float
+    tracking_signal: float
+
+
+class DemandForecastAccuracyResponse(BaseModel):
+    rows: list[DemandForecastAccuracyRecord]
+    total: int
+    avg_mape: float
+    avg_bias: float
+    avg_wmape: float
+
+
+class DemandExceptionRecord(BaseModel):
+    id: int
+    exception_id: str
+    sku: str
+    location: str
+    week_start: str
+    exception_type: str
+    severity: str
+    deviation_pct: float
+    forecast_qty: float
+    actual_qty: float
+    root_cause: str | None = None
+    resolution: str | None = None
+    status: str
+    assigned_to: str | None = None
+    created_at: str
+
+
+class DemandExceptionResponse(BaseModel):
+    rows: list[DemandExceptionRecord]
+    total: int
+    open_count: int
+    critical_count: int
+
+
+class SopCycleRecord(BaseModel):
+    id: int
+    cycle_id: str
+    cycle_name: str
+    cycle_month: str
+    status: str
+    demand_review_date: str | None = None
+    supply_review_date: str | None = None
+    pre_sop_date: str | None = None
+    exec_sop_date: str | None = None
+    consensus_approved: bool
+    approved_by: str | None = None
+    notes: str | None = None
+
+
+class SopCycleResponse(BaseModel):
+    cycles: list[SopCycleRecord]
+    total: int
+
+
+class SopReviewItemRecord(BaseModel):
+    id: int
+    cycle_id: str
+    review_type: str
+    sku: str
+    location: str
+    topic: str
+    gap_qty: float
+    action_required: str | None = None
+    owner: str | None = None
+    status: str
+    due_date: str | None = None
+
+
+class SopReviewItemResponse(BaseModel):
+    items: list[SopReviewItemRecord]
+    total: int
+
+
+class FinancialPlanRecord(BaseModel):
+    id: int
+    sku: str
+    location: str
+    month: str
+    volume_units: float
+    revenue: float
+    cogs: float
+    gross_margin: float
+    margin_pct: float
+    trade_spend: float
+    net_revenue: float
+    plan_type: str
+    version: str
+
+
+class FinancialPlanResponse(BaseModel):
+    rows: list[FinancialPlanRecord]
+    total: int
+    total_revenue: float
+    total_cogs: float
+    total_margin: float
+    avg_margin_pct: float
+
+
+class CustomerHierarchyRecord(BaseModel):
+    id: int
+    customer_id: str
+    customer_name: str
+    parent_customer_id: str | None = None
+    customer_type: str
+    channel: str
+    region: str
+    bill_to: str | None = None
+    sold_to: str | None = None
+    planning_level: str
+
+
+class CustomerHierarchyResponse(BaseModel):
+    customers: list[CustomerHierarchyRecord]
+    total: int
+
+
+class DemandPlanningKpiResponse(BaseModel):
+    kpis: list[KpiCard]
+    forecast_accuracy_trend: list[dict[str, Any]]
+    demand_vs_supply_gap: list[dict[str, Any]]
+    promo_impact_summary: dict[str, Any]

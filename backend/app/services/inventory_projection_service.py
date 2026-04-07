@@ -15,6 +15,7 @@ from ..models import (
     ParameterValue,
     ProductMaster,
     ReplenishmentOrder,
+    ReplenishmentOrderAlertLink,
     ReplenishmentOrderDetail,
     SimulationScenario,
 )
@@ -217,6 +218,19 @@ class InventoryProjectionService:
             # Keep demo-baseline orders for stable walkthroughs, but always include
             # autonomous orders so Workflow 3 visibly improves projections.
             rows = demo_rows + autonomous_rows
+        # Orders with active alert links are treated as exceptions for projection rendering.
+        alert_linked_order_ids: set[str] = set()
+        all_order_ids = {str(r[0].order_id) for r in rows}
+        if all_order_ids:
+            alert_linked_order_ids = {
+                str(link.order_id)
+                for link in self.db.query(ReplenishmentOrderAlertLink)
+                .filter(
+                    ReplenishmentOrderAlertLink.order_id.in_(list(all_order_ids)),
+                    ReplenishmentOrderAlertLink.link_status == "active",
+                )
+                .all()
+            }
         qty_map: dict[int, float] = {}
         qty_non_exception_map: dict[int, float] = {}
         qty_exception_map: dict[int, float] = {}
@@ -240,7 +254,8 @@ class InventoryProjectionService:
             detail_qty = float(detail_row.order_qty)
             qty_map[week_offset] = qty_map.get(week_offset, 0.0) + detail_qty
             id_map.setdefault(week_offset, []).append(str(detail_row.order_id))
-            if bool(header_row.is_exception):
+            is_exc = bool(header_row.is_exception) or str(detail_row.order_id) in alert_linked_order_ids
+            if is_exc:
                 qty_exception_map[week_offset] = qty_exception_map.get(week_offset, 0.0) + detail_qty
                 exception_id_map.setdefault(week_offset, []).append(str(detail_row.order_id))
             else:

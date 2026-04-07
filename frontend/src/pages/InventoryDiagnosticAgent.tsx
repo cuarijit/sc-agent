@@ -1,3 +1,4 @@
+import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
 import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
 import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
@@ -10,6 +11,7 @@ import {
   Chip,
   Divider,
   IconButton,
+  Link,
   Paper,
   Popover,
   Stack,
@@ -19,8 +21,9 @@ import {
 } from "@mui/material";
 import { type GridColDef, type GridRowId, type GridRowSelectionModel } from "@mui/x-data-grid";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
-import { createReplenishmentOrder, fetchDemoAlerts, fetchProjectedInventoryAlerts } from "../services/api";
+import { createReplenishmentOrder } from "../services/api";
 
 // ---------------------------------------------------------------------------
 // Demo data: SKU–Location combinations for diagnostic flow
@@ -196,7 +199,39 @@ const ALL_STEPS: ProgressStep[] = [
   { id: "flow_complete", label: "Order created", status: "pending" },
 ];
 
-export default function InventoryDiagnosticAgent() {
+/** Demo outcome for autonomous "completed" preset (stock-outs-in-6-weeks path). */
+const AUTONOMOUS_DEMO_ORDER_ID = "RO-01767";
+
+export type InventoryAgentLaunchPreset = "autonomous_complete" | "autonomous_need_guidance" | null;
+
+type InventoryDiagnosticAgentProps = {
+  /**
+   * When set from Information panel → Network navigation, hydrates the agent to match
+   * autonomous run status (full completion vs paused for user guidance at source selection).
+   */
+  launchPreset?: InventoryAgentLaunchPreset;
+};
+
+function buildMessage(id: string, role: "user" | "assistant", content: string, offsetMs: number): ChatMessage {
+  return { id, role, content, createdAt: Date.now() + offsetMs };
+}
+
+function extractSelectionIds(model: GridRowSelectionModel | GridRowId[] | unknown): GridRowId[] {
+  if (Array.isArray(model)) return model;
+  if (model && typeof model === "object" && "ids" in model) {
+    const ids = (model as { ids?: Set<GridRowId> | GridRowId[] }).ids;
+    if (ids instanceof Set || Array.isArray(ids)) return Array.from(ids);
+  }
+  return [];
+}
+
+function formatMessageTime(ts: number): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+export default function InventoryDiagnosticAgent({ launchPreset = null }: InventoryDiagnosticAgentProps) {
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentStepId, setCurrentStepId] = useState<AgentStepId>("idle");
@@ -209,6 +244,8 @@ export default function InventoryDiagnosticAgent() {
   const [poConfirmChoice, setPoConfirmChoice] = useState<"yes" | "no" | null>(null);
   const [loading, setLoading] = useState(false);
   const [flowEndMessage, setFlowEndMessage] = useState<string | null>(null);
+  /** Order IDs from the last successful stock-transfer creation (for deep links to Edit Order). */
+  const [lastCreatedOrderIds, setLastCreatedOrderIds] = useState<string[]>([]);
   const [helpAnchorEl, setHelpAnchorEl] = useState<HTMLElement | null>(null);
   const [stepSelections, setStepSelections] = useState<Partial<Record<AgentStepId, string>>>({});
   const [scenarioName, setScenarioName] = useState("");
@@ -216,6 +253,114 @@ export default function InventoryDiagnosticAgent() {
     () => DEMO_SCENARIO_PARAMS.map((p) => ({ ...p }))
   );
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const presetAppliedRef = useRef(false);
+
+  /** Apply snapshot when opening from Information panel autonomous run (URL preset). Parent should remount with `key` when reopening. */
+  useEffect(() => {
+    if (!launchPreset) {
+      presetAppliedRef.current = false;
+      return;
+    }
+    if (presetAppliedRef.current) return;
+    presetAppliedRef.current = true;
+
+    const base = Date.now();
+    let t = 0;
+    const nextId = () => {
+      t += 1;
+      return `preset-${base}-${t}`;
+    };
+
+    if (launchPreset === "autonomous_complete") {
+      const q: QuestionType = "stock_outs_6w";
+      const stockPrompt = HELP_PROMPTS.find((p) => p.id === "stock_outs_6w")?.text ?? "Show me all Stock outs in next 6 weeks.";
+      setCurrentQuestionType(q);
+      setGridRows(DEMO_STOCKOUTS_6W);
+      setSelectedRowIds(["s1"]);
+      setSelectedOption("neighbours");
+      setSelectedNeighbourIds(["n1"]);
+      setVendorChoice("no");
+      setPoConfirmChoice(null);
+      setLoading(false);
+      setMessages([
+        buildMessage(nextId(), "user", stockPrompt, 0),
+        buildMessage(nextId(), "assistant", getIntroMessageForQuestionType(q), 1),
+        buildMessage(nextId(), "assistant", getResultsMessageForQuestionType(q), 2),
+        buildMessage(nextId(), "user", "Proceed with 1 selected SKU/location(s).", 3),
+        buildMessage(nextId(), "assistant", getChooseOptionMessageForQuestionType(q), 4),
+        buildMessage(nextId(), "user", "Check nearest neighbours", 5),
+        buildMessage(
+          nextId(),
+          "assistant",
+          "Here are stores and RDCs that can transfer inventory. Select one or more, then click **Proceed**.",
+          6,
+        ),
+        buildMessage(nextId(), "user", "Proceed with 1 selected source(s).", 7),
+        buildMessage(
+          nextId(),
+          "assistant",
+          "I will create the Stock Transfer Order. Do you want me to check if ordering from a vendor would be more cost-effective?",
+          8,
+        ),
+        buildMessage(nextId(), "user", "No, create the Stock Transfer Order.", 9),
+        buildMessage(nextId(), "assistant", "Creating Stock Transfer Order for the selected sources...", 10),
+        buildMessage(
+          nextId(),
+          "assistant",
+          `Done. Created 1 stock transfer order(s): ${AUTONOMOUS_DEMO_ORDER_ID}.`,
+          11,
+        ),
+      ]);
+      setStepSelections({
+        show_sku_grid: "1 record selected",
+        choose_option: "Check nearest neighbours",
+        pick_neighbours: "1 source selected",
+        vendor_question: "No",
+      });
+      setFlowEndMessage(`Created 1 stock transfer order(s): ${AUTONOMOUS_DEMO_ORDER_ID}.`);
+      setLastCreatedOrderIds([AUTONOMOUS_DEMO_ORDER_ID]);
+      setCurrentStepId("flow_complete");
+      setPrompt("");
+      return;
+    }
+
+    if (launchPreset === "autonomous_need_guidance") {
+      const q: QuestionType = "demand_water";
+      const waterPrompt =
+        HELP_PROMPTS.find((p) => p.id === "demand_water")?.text
+        ?? "Demand for item WATER is going to increase by 20% in next 3 weeks what should I do?";
+      setCurrentQuestionType(q);
+      setGridRows(DEMO_WATER_DEMAND);
+      setSelectedRowIds(["w1"]);
+      setSelectedOption("neighbours");
+      setSelectedNeighbourIds([]);
+      setVendorChoice(null);
+      setPoConfirmChoice(null);
+      setLoading(false);
+      setFlowEndMessage(null);
+      setLastCreatedOrderIds([]);
+      setMessages([
+        buildMessage(nextId(), "user", waterPrompt, 0),
+        buildMessage(nextId(), "assistant", getIntroMessageForQuestionType(q), 1),
+        buildMessage(nextId(), "assistant", getResultsMessageForQuestionType(q), 2),
+        buildMessage(nextId(), "user", "Proceed with 1 selected SKU/location(s).", 3),
+        buildMessage(nextId(), "assistant", getChooseOptionMessageForQuestionType(q), 4),
+        buildMessage(nextId(), "user", "Check nearest neighbours", 5),
+        buildMessage(
+          nextId(),
+          "assistant",
+          "Here are stores and RDCs that can transfer inventory. Select one or more, then click **Proceed**.",
+          6,
+        ),
+      ]);
+      setStepSelections({
+        show_sku_grid: "1 record selected",
+        choose_option: "Check nearest neighbours",
+      });
+      setCurrentStepId("pick_neighbours");
+      setPrompt("");
+    }
+  }, [launchPreset]);
 
   const progressSteps = ALL_STEPS.map((s) => {
     const idx = ALL_STEPS.findIndex((x) => x.id === s.id);
@@ -258,42 +403,9 @@ export default function InventoryDiagnosticAgent() {
     }
 
     const primarySource = selectedSources[0];
-    let knownAlerts: Array<{ alert_id?: string | null; impacted_node_id?: string | null }> = [];
-    try {
-      const alertSnapshot = await fetchDemoAlerts();
-      knownAlerts = [...(alertSnapshot.active ?? []), ...(alertSnapshot.archived ?? [])];
-    } catch {
-      // Keep the order flow resilient even if alert lookup endpoint is temporarily unavailable.
-      knownAlerts = [];
-    }
-    const validAlertIds = new Set(knownAlerts.map((row) => String(row.alert_id || "").trim()).filter(Boolean));
     const createdOrderIds: string[] = [];
 
     for (const row of selectedRows) {
-      const requestedAlertId = String(row.alert_id || "").trim();
-      let fallbackAlertId = "";
-      try {
-        const projectionAlerts = await fetchProjectedInventoryAlerts(row.sku, row.location);
-        const activeProjectionAlert = projectionAlerts.find((item) => String(item.status || "active").toLowerCase() !== "archived");
-        fallbackAlertId = String(activeProjectionAlert?.alert_id || projectionAlerts[0]?.alert_id || "").trim();
-      } catch {
-        fallbackAlertId = "";
-      }
-      const nodeMatchedAlertId = String(
-        knownAlerts.find((item) => String(item.impacted_node_id || "").trim() === row.location)?.alert_id || "",
-      ).trim();
-      const defaultAlertId = "ALERT-NODE-001";
-      const alertId = (
-        [requestedAlertId, fallbackAlertId, nodeMatchedAlertId, defaultAlertId].find((item) => {
-          if (!item) return false;
-          if (validAlertIds.size === 0) return true;
-          return validAlertIds.has(item);
-        }) || defaultAlertId
-      ).trim();
-      if (!alertId) {
-        throw new Error(`No valid alert found for ${row.sku} @ ${row.location}.`);
-      }
-
       const shortageQty = Math.max(
         50,
         Math.ceil(Math.max(row.safety_stock - row.on_hand, row.forecast_qty * 0.2)),
@@ -302,13 +414,12 @@ export default function InventoryDiagnosticAgent() {
       eta.setDate(eta.getDate() + Math.max(1, Number(primarySource.transit_days) || 2));
 
       const created = await createReplenishmentOrder({
-        alert_id: alertId,
+        associate_alert: false,
         order_type: "Stock Transfer",
         status: "created",
-        is_exception: true,
-        exception_reason: "service_risk",
-        alert_action_taken: "agent_stock_transfer_order",
-        order_created_by: "agent",
+        is_exception: false,
+        order_created_by: "inventory_diagnostic_agent",
+        alert_action_taken: "inventory_diagnostic_stock_transfer",
         ship_to_node_id: row.location,
         ship_from_node_id: primarySource.name,
         eta: eta.toISOString().slice(0, 10),
@@ -395,6 +506,7 @@ export default function InventoryDiagnosticAgent() {
           setCurrentStepId("pick_neighbours");
         });
       } else if (option === "optimize") {
+        setLastCreatedOrderIds([]);
         addMessage("assistant", "Optimizer has started, check the results on the Alert tab.");
         setCurrentStepId("flow_complete");
         setFlowEndMessage("Optimizer has started. Check the Alert tab for results.");
@@ -433,14 +545,17 @@ export default function InventoryDiagnosticAgent() {
       if (choice === "no") {
         addMessage("assistant", "Creating Stock Transfer Order for the selected sources...");
         setLoading(true);
+        setLastCreatedOrderIds([]);
         try {
           const createdOrderIds = await createStockTransferOrdersFromSelection();
+          setLastCreatedOrderIds(createdOrderIds);
           addMessage(
             "assistant",
             `Done. Created ${createdOrderIds.length} stock transfer order(s): ${createdOrderIds.join(", ")}.`,
           );
           setFlowEndMessage(`Created ${createdOrderIds.length} stock transfer order(s): ${createdOrderIds.join(", ")}.`);
         } catch (error) {
+          setLastCreatedOrderIds([]);
           const message = error instanceof Error ? error.message : "Failed to create stock transfer order.";
           addMessage("assistant", `Unable to create stock transfer order: ${message}`);
           setFlowEndMessage(`Unable to create stock transfer order: ${message}`);
@@ -472,19 +587,23 @@ export default function InventoryDiagnosticAgent() {
       addMessage("user", choice === "yes" ? "Yes, create PO." : "No, create Stock Transfer instead.");
 
       if (choice === "yes") {
+        setLastCreatedOrderIds([]);
         addMessage("assistant", "Creating Purchase Order to Vendor V001... Done. Your PO has been created.");
         setFlowEndMessage("Purchase Order to Vendor V001 created successfully.");
       } else {
         addMessage("assistant", "Creating Stock Transfer Order instead...");
         setLoading(true);
+        setLastCreatedOrderIds([]);
         try {
           const createdOrderIds = await createStockTransferOrdersFromSelection();
+          setLastCreatedOrderIds(createdOrderIds);
           addMessage(
             "assistant",
             `Done. Created ${createdOrderIds.length} stock transfer order(s): ${createdOrderIds.join(", ")}.`,
           );
           setFlowEndMessage(`Created ${createdOrderIds.length} stock transfer order(s): ${createdOrderIds.join(", ")}.`);
         } catch (error) {
+          setLastCreatedOrderIds([]);
           const message = error instanceof Error ? error.message : "Failed to create stock transfer order.";
           addMessage("assistant", `Unable to create stock transfer order: ${message}`);
           setFlowEndMessage(`Unable to create stock transfer order: ${message}`);
@@ -502,11 +621,13 @@ export default function InventoryDiagnosticAgent() {
     setStepSelections((prev) => ({ ...prev, manual_scenario: name }));
     addMessage("user", `Create scenario: ${name}`);
     addMessage("assistant", `Scenario created with the name "${name}".`);
+    setLastCreatedOrderIds([]);
     setFlowEndMessage(`Scenario created with the name "${name}".`);
     setCurrentStepId("flow_complete");
   }, [scenarioName, addMessage]);
 
   const handleReset = useCallback(() => {
+    presetAppliedRef.current = false;
     setMessages([]);
     setCurrentStepId("idle");
     setCurrentQuestionType("generic");
@@ -517,6 +638,7 @@ export default function InventoryDiagnosticAgent() {
     setVendorChoice(null);
     setPoConfirmChoice(null);
     setFlowEndMessage(null);
+    setLastCreatedOrderIds([]);
     setStepSelections({});
     setScenarioName("");
     setScenarioParams(DEMO_SCENARIO_PARAMS.map((p) => ({ ...p })));
@@ -550,11 +672,43 @@ export default function InventoryDiagnosticAgent() {
   const neighbourRows = DEMO_NEIGHBOUR_OPTIONS.map((n) => ({ ...n, id: n.id }));
 
   return (
-    <Box sx={{ display: "flex", gap: 2, width: "100%", flex: 1, minHeight: 0, overflow: "hidden" }}>
+    <Box
+      sx={{
+        display: "flex",
+        gap: 1.5,
+        width: "100%",
+        flex: 1,
+        minHeight: 0,
+        overflow: "hidden",
+        p: 1,
+        borderRadius: 3,
+        border: "1px solid #dbe8ff",
+        bgcolor: "#f6faff",
+        boxShadow: "0 14px 34px rgba(71, 116, 221, 0.16)",
+      }}
+    >
       {/* Left: Chat + content; composer pinned at bottom */}
-      <Box sx={{ flex: "1 1 400px", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.5, flexShrink: 0 }}>
-          <Typography variant="subtitle2" color="text.secondary">
+      <Box sx={{ flex: "1 1 400px", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", gap: 1 }}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{
+            px: 1.2,
+            py: 1,
+            borderRadius: 1.5,
+            border: "1px solid #d8e8ff",
+            bgcolor: "rgba(238, 246, 255, 0.9)",
+            flexShrink: 0,
+          }}
+        >
+          <Stack direction="row" spacing={0.8} alignItems="center">
+            <AutoAwesomeOutlinedIcon fontSize="small" color="primary" />
+            <Typography variant="subtitle2" color="#1f3f74" fontWeight={700}>
+              Inventory Diagnostic Assistant
+            </Typography>
+          </Stack>
+          <Typography variant="caption" color="text.secondary">
             Ask a question or pick a suggested prompt below.
           </Typography>
           <Tooltip title="Suggested prompts">
@@ -573,7 +727,7 @@ export default function InventoryDiagnosticAgent() {
             onClose={() => setHelpAnchorEl(null)}
             anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
             transformOrigin={{ vertical: "top", horizontal: "right" }}
-            slotProps={{ paper: { sx: { p: 1.5, maxWidth: 420 } } }}
+            slotProps={{ paper: { sx: { p: 1.5, maxWidth: 460, border: "1px solid #d8e8ff", bgcolor: "#ffffff" } } }}
           >
             <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
               Suggested prompts
@@ -600,7 +754,20 @@ export default function InventoryDiagnosticAgent() {
             </Stack>
           </Popover>
         </Stack>
-        <Paper elevation={0} sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "auto", p: 1.5 }}>
+        <Paper
+          elevation={0}
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "auto",
+            p: 1.5,
+            border: "1px solid #d8e8ff",
+            bgcolor: "rgba(255,255,255,0.75)",
+            borderRadius: 2,
+          }}
+        >
           <Stack spacing={1.2}>
             {messages.length === 0 ? (
               <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
@@ -613,9 +780,16 @@ export default function InventoryDiagnosticAgent() {
                   direction="row"
                   spacing={1.5}
                   justifyContent={msg.role === "user" ? "flex-end" : "flex-start"}
+                  sx={{
+                    "@keyframes bubbleIn": {
+                      from: { opacity: 0, transform: "translateY(6px)" },
+                      to: { opacity: 1, transform: "translateY(0)" },
+                    },
+                    animation: "bubbleIn 220ms ease",
+                  }}
                 >
                   {msg.role === "assistant" ? (
-                    <Avatar sx={{ bgcolor: "primary.main", width: 32, height: 32 }}>
+                    <Avatar sx={{ width: 30, height: 30, bgcolor: "#d9f2ff", color: "#0f5778" }}>
                       <SmartToyOutlinedIcon fontSize="small" />
                     </Avatar>
                   ) : null}
@@ -625,17 +799,34 @@ export default function InventoryDiagnosticAgent() {
                       px: 1.5,
                       py: 1,
                       maxWidth: "85%",
-                      bgcolor: msg.role === "user" ? "primary.main" : "action.hover",
-                      color: msg.role === "user" ? "primary.contrastText" : "text.primary",
                       borderRadius: 2,
+                      border: "1px solid",
+                      borderColor: msg.role === "user" ? "#b8d5ff" : "#c6e8ff",
+                      bgcolor: msg.role === "user" ? "#e8f2ff" : "#f1faff",
+                      color: msg.role === "user" ? "#1f4f88" : "text.primary",
                     }}
                   >
-                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
+                    <Typography variant="caption" sx={{ display: "block", mb: 0.35, fontWeight: 700, color: msg.role === "user" ? "#1f4f88" : "#1e4f86" }}>
+                      {msg.role === "user" ? "You" : "Assistant"}
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.45 }}>
                       {msg.content.replace(/\*\*(.+?)\*\*/g, "$1")}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        mt: 0.35,
+                        display: "block",
+                        textAlign: msg.role === "user" ? "right" : "left",
+                        color: "text.secondary",
+                        fontSize: 11,
+                      }}
+                    >
+                      {formatMessageTime(msg.createdAt)}
                     </Typography>
                   </Paper>
                   {msg.role === "user" ? (
-                    <Avatar sx={{ bgcolor: "secondary.main", width: 32, height: 32 }}>
+                    <Avatar sx={{ width: 30, height: 30, bgcolor: "#d6e7ff", color: "#204f8f" }}>
                       <PersonOutlineIcon fontSize="small" />
                     </Avatar>
                   ) : null}
@@ -643,11 +834,46 @@ export default function InventoryDiagnosticAgent() {
               ))
             )}
             {loading ? (
-              <Stack direction="row" spacing={1.5} justifyContent="flex-start">
-                <Avatar sx={{ bgcolor: "primary.main", width: 32, height: 32 }}>
+              <Stack
+                direction="row"
+                spacing={1.5}
+                justifyContent="flex-start"
+                sx={{
+                  "@keyframes thinkingPulse": {
+                    "0%": { opacity: 0.65 },
+                    "50%": { opacity: 1 },
+                    "100%": { opacity: 0.65 },
+                  },
+                  animation: "thinkingPulse 1.2s ease-in-out infinite",
+                }}
+              >
+                <Avatar sx={{ width: 30, height: 30, bgcolor: "#d9f2ff", color: "#0f5778" }}>
                   <SmartToyOutlinedIcon fontSize="small" />
                 </Avatar>
-                <Chip label="Thinking..." size="small" sx={{ alignSelf: "center" }} />
+                <Box sx={{ px: 1.3, py: 0.9, borderRadius: 2, border: "1px solid #c6e8ff", bgcolor: "#f1faff", alignSelf: "center" }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Typography variant="body2" sx={{ fontSize: 14 }}>Thinking...</Typography>
+                    <Stack direction="row" spacing={0.5} sx={{ ml: 0.3 }}>
+                      {[0, 1, 2].map((idx) => (
+                        <Box
+                          key={idx}
+                          sx={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            bgcolor: "#5f89c9",
+                            "@keyframes dotBounce": {
+                              "0%, 80%, 100%": { transform: "scale(0.7)", opacity: 0.45 },
+                              "40%": { transform: "scale(1)", opacity: 1 },
+                            },
+                            animation: "dotBounce 1.1s infinite ease-in-out",
+                            animationDelay: `${idx * 0.14}s`,
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  </Stack>
+                </Box>
               </Stack>
             ) : null}
             <div ref={chatEndRef} />
@@ -656,18 +882,20 @@ export default function InventoryDiagnosticAgent() {
 
         {/* Step 1: SKU/Location grid */}
         {currentStepId === "show_sku_grid" && !loading && (
-          <Paper variant="outlined" sx={{ mt: 1, p: 1 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#d8e8ff", bgcolor: "#fbfdff", borderRadius: 1.5 }}>
+            <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1 }}>
+              <Chip size="small" label="Step 1" sx={{ bgcolor: "#edf4ff", color: "#1f4f88", fontWeight: 700 }} />
+              <Typography variant="subtitle2">
               SKU / Location results — select rows and click Proceed
-            </Typography>
+              </Typography>
+            </Stack>
             <div className="maintenance-grid-shell" style={{ height: 260 }}>
               <SmartDataGrid
                 rows={gridRows}
                 columns={skuColumns}
                 checkboxSelection
-                disableRowSelectionOnClick
                 rowSelectionModel={{ type: "include", ids: new Set(selectedRowIds) } satisfies GridRowSelectionModel}
-                onRowSelectionModelChange={(model) => setSelectedRowIds(Array.from(model.ids))}
+                onRowSelectionModelChange={(model) => setSelectedRowIds(extractSelectionIds(model))}
                 pageSizeOptions={[5, 10]}
                 initialState={{ pagination: { paginationModel: { pageSize: 5, page: 0 } } }}
                 sx={{ border: 0 }}
@@ -676,7 +904,7 @@ export default function InventoryDiagnosticAgent() {
             <Button
               variant="contained"
               size="small"
-              sx={{ mt: 1 }}
+              sx={{ mt: 1, minWidth: 100 }}
               disabled={selectedRowIds.length === 0}
               onClick={handleProceedFromGrid}
             >
@@ -687,16 +915,20 @@ export default function InventoryDiagnosticAgent() {
 
         {/* Step 2: Options */}
         {currentStepId === "choose_option" && (
-          <Paper variant="outlined" sx={{ mt: 1, p: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#d8e8ff", bgcolor: "#fbfdff", borderRadius: 1.5 }}>
+            <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1 }}>
+              <Chip size="small" label="Step 2" sx={{ bgcolor: "#edf4ff", color: "#1f4f88", fontWeight: 700 }} />
+              <Typography variant="subtitle2">
               Choose an option
-            </Typography>
-            <Stack direction="row" flexWrap="wrap" gap={1}>
+              </Typography>
+            </Stack>
+            <Stack direction="row" flexWrap="wrap" gap={0.8}>
               {(["source", "neighbours", "optimize", "manual"] as const).map((opt) => (
                 <Button
                   key={opt}
                   variant={selectedOption === opt ? "contained" : "outlined"}
                   size="small"
+                  sx={{ fontWeight: selectedOption === opt ? 700 : 500 }}
                   onClick={() => selectOption(opt)}
                 >
                   {opt === "source" && "Check Source"}
@@ -711,18 +943,20 @@ export default function InventoryDiagnosticAgent() {
 
         {/* Step 2b: Neighbours grid */}
         {currentStepId === "pick_neighbours" && !loading && (
-          <Paper variant="outlined" sx={{ mt: 1, p: 1 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#d8e8ff", bgcolor: "#fbfdff", borderRadius: 1.5 }}>
+            <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1 }}>
+              <Chip size="small" label="Step 3" sx={{ bgcolor: "#edf4ff", color: "#1f4f88", fontWeight: 700 }} />
+              <Typography variant="subtitle2">
               Select store(s) or RDC(s) to transfer from
-            </Typography>
+              </Typography>
+            </Stack>
             <div className="maintenance-grid-shell" style={{ height: 220 }}>
               <SmartDataGrid
                 rows={neighbourRows}
                 columns={neighbourColumns}
                 checkboxSelection
-                disableRowSelectionOnClick
                 rowSelectionModel={{ type: "include", ids: new Set(selectedNeighbourIds) } satisfies GridRowSelectionModel}
-                onRowSelectionModelChange={(model) => setSelectedNeighbourIds(Array.from(model.ids))}
+                onRowSelectionModelChange={(model) => setSelectedNeighbourIds(extractSelectionIds(model))}
                 hideFooter
                 sx={{ border: 0 }}
               />
@@ -730,7 +964,7 @@ export default function InventoryDiagnosticAgent() {
             <Button
               variant="contained"
               size="small"
-              sx={{ mt: 1 }}
+              sx={{ mt: 1, minWidth: 100 }}
               disabled={selectedNeighbourIds.length === 0}
               onClick={handleProceedFromNeighbours}
             >
@@ -741,10 +975,13 @@ export default function InventoryDiagnosticAgent() {
 
         {/* Step 3: Vendor question */}
         {currentStepId === "vendor_question" && (
-          <Paper variant="outlined" sx={{ mt: 1, p: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#d8e8ff", bgcolor: "#fbfdff", borderRadius: 1.5 }}>
+            <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1 }}>
+              <Chip size="small" label="Decision" sx={{ bgcolor: "#edf4ff", color: "#1f4f88", fontWeight: 700 }} />
+              <Typography variant="subtitle2">
               Check vendor for cost effectiveness?
-            </Typography>
+              </Typography>
+            </Stack>
             <Stack direction="row" gap={1}>
               <Button
                 variant={vendorChoice === "yes" ? "contained" : "outlined"}
@@ -766,10 +1003,13 @@ export default function InventoryDiagnosticAgent() {
 
         {/* Step 4: PO confirm */}
         {currentStepId === "po_confirm" && (
-          <Paper variant="outlined" sx={{ mt: 1, p: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#d8e8ff", bgcolor: "#fbfdff", borderRadius: 1.5 }}>
+            <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1 }}>
+              <Chip size="small" label="Confirm" sx={{ bgcolor: "#edf4ff", color: "#1f4f88", fontWeight: 700 }} />
+              <Typography variant="subtitle2">
               Create PO to Vendor V001?
-            </Typography>
+              </Typography>
+            </Stack>
             <Stack direction="row" gap={1}>
               <Button
                 variant={poConfirmChoice === "yes" ? "contained" : "outlined"}
@@ -791,10 +1031,13 @@ export default function InventoryDiagnosticAgent() {
 
         {/* Manual scenario: name + inventory parameter recommendations */}
         {currentStepId === "manual_scenario" && (
-          <Paper variant="outlined" sx={{ mt: 1, p: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#d8e8ff", bgcolor: "#fbfdff", borderRadius: 1.5 }}>
+            <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 1 }}>
+              <Chip size="small" label="Scenario" sx={{ bgcolor: "#edf4ff", color: "#1f4f88", fontWeight: 700 }} />
+              <Typography variant="subtitle2">
               Create scenario
-            </Typography>
+              </Typography>
+            </Stack>
             <TextField
               size="small"
               fullWidth
@@ -833,13 +1076,47 @@ export default function InventoryDiagnosticAgent() {
         )}
 
         {flowEndMessage && (
-          <Paper variant="outlined" sx={{ mt: 1, p: 2, bgcolor: "success.light", color: "success.contrastText" }}>
-            <Typography variant="subtitle2">{flowEndMessage}</Typography>
+          <Paper variant="outlined" sx={{ mt: 0.25, p: 1.2, borderColor: "#9dd6bb", bgcolor: "#e8f7ef", color: "#0f5132", borderRadius: 1.5 }}>
+            {lastCreatedOrderIds.length > 0 && flowEndMessage.toLowerCase().includes("stock transfer") ? (
+              <Typography variant="subtitle2" component="div">
+                Created {lastCreatedOrderIds.length} stock transfer order(s):{" "}
+                {lastCreatedOrderIds.map((orderId, index) => (
+                  <span key={orderId}>
+                    {index > 0 ? ", " : null}
+                    <Link
+                      component={RouterLink}
+                      to={`/replenishment?tab=order-details&order_id=${encodeURIComponent(orderId)}&open_edit=1`}
+                      underline="always"
+                      sx={{
+                        fontWeight: 700,
+                        color: "inherit",
+                        "&:hover": { color: "inherit", opacity: 0.92 },
+                      }}
+                    >
+                      {orderId}
+                    </Link>
+                  </span>
+                ))}
+                .
+              </Typography>
+            ) : (
+              <Typography variant="subtitle2">{flowEndMessage}</Typography>
+            )}
           </Paper>
         )}
 
         {/* Composer */}
-        <Paper elevation={0} sx={{ p: 1.5, flexShrink: 0 }}>
+        <Paper
+          elevation={0}
+          sx={{
+            p: 1.2,
+            flexShrink: 0,
+            border: "1px solid #d8e8ff",
+            bgcolor: "rgba(255,255,255,0.94)",
+            borderRadius: 1.5,
+            borderTop: "1px solid #d8e8ff",
+          }}
+        >
           <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="stretch">
             <TextField
               value={prompt}
@@ -850,6 +1127,7 @@ export default function InventoryDiagnosticAgent() {
               minRows={1}
               maxRows={3}
               size="small"
+              sx={{ "& .MuiInputBase-root": { bgcolor: "#ffffff", fontSize: 15 } }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -864,6 +1142,7 @@ export default function InventoryDiagnosticAgent() {
                 disabled={!prompt.trim() || loading || currentStepId !== "idle"}
                 onClick={handleSubmitPrompt}
                 startIcon={<SendOutlinedIcon />}
+                sx={{ minWidth: 110, fontWeight: 600, fontSize: 14 }}
               >
                 Submit
               </Button>
@@ -885,13 +1164,16 @@ export default function InventoryDiagnosticAgent() {
           minWidth: 320,
           minHeight: 0,
           overflowY: "auto",
-          p: 2,
+          p: 1.4,
           display: "flex",
           flexDirection: "column",
-          gap: 1.5,
+          gap: 1,
+          borderColor: "#d8e8ff",
+          bgcolor: "rgba(255,255,255,0.75)",
+          borderRadius: 2,
         }}
       >
-        <Typography variant="subtitle2" fontWeight={600}>
+        <Typography variant="subtitle2" fontWeight={700} color="#1f3f74">
           Progress &amp; remaining steps
         </Typography>
         <Divider />
@@ -899,18 +1181,28 @@ export default function InventoryDiagnosticAgent() {
           <Box
             key={step.id}
             sx={{
-              py: 0.5,
+              py: 0.6,
               pl: 1,
               borderLeft: "3px solid",
               borderColor: step.status === "current" ? "primary.main" : step.status === "done" ? "success.main" : "divider",
+              borderRadius: 1,
+              bgcolor: step.status === "current" ? "rgba(37,99,235,0.06)" : "transparent",
             }}
           >
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, flexWrap: "wrap" }}>
+              <Box
+                sx={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  bgcolor: step.status === "current" ? "primary.main" : step.status === "done" ? "success.main" : "divider",
+                  flexShrink: 0,
+                }}
+              />
               <Typography
                 variant="caption"
-                fontWeight={step.status === "current" ? 700 : 400}
+                fontWeight={step.status === "current" ? 700 : 500}
                 color={step.status === "current" ? "primary.main" : step.status === "done" ? "success.main" : "text.secondary"}
-                noWrap
               >
                 {step.label}
               </Typography>

@@ -24,6 +24,7 @@ import {
   useGridApiContext,
   useGridSelector,
   type DataGridProps,
+  type GridToolbarProps,
 } from "@mui/x-data-grid";
 import { useMemo, useState } from "react";
 import { utils, writeFile } from "xlsx";
@@ -160,8 +161,13 @@ function SmartToolbar({ exportFileName = "grid-data" }: SmartToolbarSlotProps) {
   );
 }
 
-export type SmartDataGridProps = DataGridProps & {
+type DataGridSlotProps = NonNullable<DataGridProps["slotProps"]>;
+
+export type SmartDataGridProps = Omit<DataGridProps, "slotProps"> & {
   exportFileName?: string;
+  slotProps?: Omit<DataGridSlotProps, "toolbar"> & {
+    toolbar?: Partial<GridToolbarProps> & SmartToolbarSlotProps;
+  };
 };
 
 export default function SmartDataGrid({
@@ -173,9 +179,9 @@ export default function SmartDataGrid({
 }: SmartDataGridProps) {
   const ToolbarComponent = slots?.toolbar
     ? slots.toolbar
-    : function ToolbarComponentInjected() {
-      return <SmartToolbar exportFileName={exportFileName} />;
-    };
+    : function ToolbarComponentInjected(toolbarProps: GridToolbarProps & SmartToolbarSlotProps) {
+        return <SmartToolbar exportFileName={toolbarProps.exportFileName ?? exportFileName} />;
+      };
 
   return (
     <DataGrid

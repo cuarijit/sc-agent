@@ -12,11 +12,13 @@ import {
 } from "@mui/material";
 import { type GridColDef } from "@mui/x-data-grid";
 import { useCallback, useState } from "react";
+import { useOutletContext } from "react-router-dom";
 
 import SmartDataGrid from "../components/shared/SmartDataGrid";
 import { SectionCard } from "../components/shared/UiBits";
 import InventoryDiagnosticAgent from "./InventoryDiagnosticAgent";
 import ParameterDiagnosticAgent from "./ParameterDiagnosticAgent";
+import type { ShellContextValue } from "../components/layout/AppShellLayout";
 
 export type AgentId = "inventory" | "parameter" | "order";
 
@@ -35,6 +37,7 @@ const INITIAL_AGENTS: AgentConfigRow[] = [
 ];
 
 export default function AgentConfigurationPage() {
+  const { config } = useOutletContext<ShellContextValue>();
   const [agents, setAgents] = useState<AgentConfigRow[]>(() => INITIAL_AGENTS.map((a) => ({ ...a })));
   const [openModal, setOpenModal] = useState<AgentId | null>(null);
 
@@ -159,9 +162,37 @@ export default function AgentConfigurationPage() {
         onClose={handleCloseModal}
         fullWidth
         maxWidth="xl"
-        slotProps={{ paper: { sx: { minHeight: "80vh", maxHeight: "90vh" } } }}
+        slotProps={{
+          paper: {
+            sx: {
+              minHeight: "80vh",
+              maxHeight: "90vh",
+              borderRadius: 3,
+              bgcolor: "#f6faff",
+              border: "1px solid #dbe8ff",
+              boxShadow: "0 14px 34px rgba(71, 116, 221, 0.16)",
+            },
+          },
+        }}
       >
-        <DialogTitle>Inventory Diagnostic Agent</DialogTitle>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
+          <Typography variant="h6" component="span">Inventory Diagnostic Agent</Typography>
+          <Typography
+            component="span"
+            sx={{
+              px: 1,
+              py: 0.25,
+              borderRadius: 99,
+              border: "1px solid #c9dcff",
+              bgcolor: "rgba(255,255,255,0.84)",
+              color: "#1f3f74",
+              fontWeight: 600,
+              fontSize: "0.75rem",
+            }}
+          >
+            Model: {config.llmModel}
+          </Typography>
+        </DialogTitle>
         <DialogContent dividers sx={{ p: 0, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
           <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", p: 2 }}>
             <InventoryDiagnosticAgent />
@@ -178,9 +209,37 @@ export default function AgentConfigurationPage() {
         onClose={handleCloseModal}
         fullWidth
         maxWidth="xl"
-        slotProps={{ paper: { sx: { minHeight: "80vh", maxHeight: "90vh" } } }}
+        slotProps={{
+          paper: {
+            sx: {
+              minHeight: "80vh",
+              maxHeight: "90vh",
+              borderRadius: 3,
+              bgcolor: "#f6faff",
+              border: "1px solid #dbe8ff",
+              boxShadow: "0 14px 34px rgba(71, 116, 221, 0.16)",
+            },
+          },
+        }}
       >
-        <DialogTitle>Parameter Diagnostic Agent</DialogTitle>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2 }}>
+          <Typography variant="h6" component="span">Parameter Diagnostic Agent</Typography>
+          <Typography
+            component="span"
+            sx={{
+              px: 1,
+              py: 0.25,
+              borderRadius: 99,
+              border: "1px solid #c9dcff",
+              bgcolor: "rgba(255,255,255,0.84)",
+              color: "#1f3f74",
+              fontWeight: 600,
+              fontSize: "0.75rem",
+            }}
+          >
+            Model: {config.llmModel}
+          </Typography>
+        </DialogTitle>
         <DialogContent dividers sx={{ p: 0, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
           <Box sx={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", p: 2 }}>
             <ParameterDiagnosticAgent onOpenInventoryAgent={openInventoryModal} />

@@ -48,10 +48,14 @@ class NetworkService:
     def _ensure_order_alert_link_table(self) -> None:
         bind = self.db.get_bind()
         ReplenishmentOrderAlertLink.__table__.create(bind=bind, checkfirst=True)
-        existing = {
-            (str(item.order_id), str(item.alert_id))
-            for item in self.db.query(ReplenishmentOrderAlertLink.order_id, ReplenishmentOrderAlertLink.alert_id).all()
-        }
+        try:
+            existing = {
+                (str(item.order_id), str(item.alert_id))
+                for item in self.db.query(ReplenishmentOrderAlertLink.order_id, ReplenishmentOrderAlertLink.alert_id).all()
+            }
+        except OperationalError:
+            self.db.rollback()
+            return
         created = False
         now_iso = datetime.utcnow().replace(microsecond=0).isoformat()
         for order_id, alert_id, ship_to in self.db.query(
@@ -76,7 +80,10 @@ class NetworkService:
             existing.add((oid, aid))
             created = True
         if created:
-            self.db.flush()
+            try:
+                self.db.flush()
+            except OperationalError:
+                self.db.rollback()
 
     def _next_autonomous_order_id(self) -> str:
         max_suffix = 0

@@ -549,6 +549,8 @@ export interface ReplenishmentOrderDetailInput {
 export interface ReplenishmentOrderCreateRequest {
   order_id?: string | null;
   alert_id?: string | null;
+  /** When false, backend creates the order with no alert link (e.g. Inventory Diagnostic Agent). */
+  associate_alert?: boolean;
   order_type?: string;
   status?: string;
   is_exception?: boolean;
@@ -658,4 +660,210 @@ export interface InventorySimulationSaveResponse {
   scenario_id: string;
   saved_rows: number;
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Demand Planning / IBP types
+// ---------------------------------------------------------------------------
+
+export interface DemandForecastRecord {
+  id: number;
+  sku: string;
+  location: string;
+  week_start: string;
+  baseline_qty: number;
+  promo_lift_qty: number;
+  consensus_qty: number;
+  final_forecast_qty: number;
+  actual_qty: number;
+  forecast_source: string;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export interface DemandForecastResponse {
+  rows: DemandForecastRecord[];
+  total: number;
+}
+
+export interface DemandPromotionRecord {
+  id: number;
+  promo_id: string;
+  promo_name: string;
+  sku: string;
+  location: string;
+  customer: string;
+  customer_type: string;
+  channel: string;
+  start_week: string;
+  end_week: string;
+  base_volume: number;
+  lift_percent: number;
+  lift_volume: number;
+  trade_spend: number;
+  roi: number;
+  status: string;
+  syndicated_source: string | null;
+  historical_performance: number | null;
+}
+
+export interface DemandPromotionResponse {
+  rows: DemandPromotionRecord[];
+  total: number;
+}
+
+export interface DemandConsensusRecord {
+  id: number;
+  cycle_id: string;
+  sku: string;
+  location: string;
+  week_start: string;
+  sales_input: number;
+  customer_input: number;
+  supply_chain_input: number;
+  marketing_input: number;
+  consensus_qty: number;
+  variance_pct: number;
+  status: string;
+  notes: string | null;
+}
+
+export interface DemandConsensusResponse {
+  rows: DemandConsensusRecord[];
+  total: number;
+}
+
+export interface DemandForecastAccuracyRecord {
+  id: number;
+  sku: string;
+  location: string;
+  week_start: string;
+  forecast_qty: number;
+  actual_qty: number;
+  mape: number;
+  bias: number;
+  wmape: number;
+  tracking_signal: number;
+}
+
+export interface DemandForecastAccuracyResponse {
+  rows: DemandForecastAccuracyRecord[];
+  total: number;
+  avg_mape: number;
+  avg_bias: number;
+  avg_wmape: number;
+}
+
+export interface DemandExceptionRecord {
+  id: number;
+  exception_id: string;
+  sku: string;
+  location: string;
+  week_start: string;
+  exception_type: string;
+  severity: string;
+  deviation_pct: number;
+  forecast_qty: number;
+  actual_qty: number;
+  root_cause: string | null;
+  resolution: string | null;
+  status: string;
+  assigned_to: string | null;
+  created_at: string;
+}
+
+export interface DemandExceptionResponse {
+  rows: DemandExceptionRecord[];
+  total: number;
+  open_count: number;
+  critical_count: number;
+}
+
+export interface SopCycleRecord {
+  id: number;
+  cycle_id: string;
+  cycle_name: string;
+  cycle_month: string;
+  status: string;
+  demand_review_date: string | null;
+  supply_review_date: string | null;
+  pre_sop_date: string | null;
+  exec_sop_date: string | null;
+  consensus_approved: boolean;
+  approved_by: string | null;
+  notes: string | null;
+}
+
+export interface SopCycleResponse {
+  cycles: SopCycleRecord[];
+  total: number;
+}
+
+export interface SopReviewItemRecord {
+  id: number;
+  cycle_id: string;
+  review_type: string;
+  sku: string;
+  location: string;
+  topic: string;
+  gap_qty: number;
+  action_required: string | null;
+  owner: string | null;
+  status: string;
+  due_date: string | null;
+}
+
+export interface SopReviewItemResponse {
+  items: SopReviewItemRecord[];
+  total: number;
+}
+
+export interface FinancialPlanRecord {
+  id: number;
+  sku: string;
+  location: string;
+  month: string;
+  volume_units: number;
+  revenue: number;
+  cogs: number;
+  gross_margin: number;
+  margin_pct: number;
+  trade_spend: number;
+  net_revenue: number;
+  plan_type: string;
+  version: string;
+}
+
+export interface FinancialPlanResponse {
+  rows: FinancialPlanRecord[];
+  total: number;
+  total_revenue: number;
+  total_cogs: number;
+  total_margin: number;
+  avg_margin_pct: number;
+}
+
+export interface CustomerHierarchyRecord {
+  id: number;
+  customer_id: string;
+  customer_name: string;
+  parent_customer_id: string | null;
+  customer_type: string;
+  channel: string;
+  region: string;
+  bill_to: string | null;
+  sold_to: string | null;
+  planning_level: string;
+}
+
+export interface CustomerHierarchyResponse {
+  customers: CustomerHierarchyRecord[];
+  total: number;
+}
+
+export interface DemandPlanningKpiResponse {
+  kpis: KpiCard[];
+  forecast_accuracy_trend: Array<{ week: string; mape: number }>;
+  demand_vs_supply_gap: Array<{ week: string; demand: number; supply: number }>;
+  promo_impact_summary: Record<string, unknown>;
 }

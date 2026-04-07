@@ -48,7 +48,7 @@ npm run electron:dist:win
 
 Output:
 
-- `release/Zebra MEIO Desktop-Setup-<version>.exe`
+- `release/Supply Planning Desktop-Setup-<version>.exe`
 
 Important:
 
@@ -66,8 +66,8 @@ npm run electron:dist:mac
 
 Output examples:
 
-- `release/Zebra MEIO Desktop-<version>-arm64.dmg`
-- `release/Zebra MEIO Desktop-<version>-x64.dmg`
+- `release/Supply Planning Desktop-<version>-arm64.dmg`
+- `release/Supply Planning Desktop-<version>-x64.dmg`
 - matching `.zip` artifacts for each architecture
 
 ### Development desktop run

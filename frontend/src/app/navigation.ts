@@ -7,6 +7,15 @@ import SettingsSuggestOutlinedIcon from "@mui/icons-material/SettingsSuggestOutl
 import TableViewOutlinedIcon from "@mui/icons-material/TableViewOutlined";
 import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
+import TrendingUpOutlinedIcon from "@mui/icons-material/TrendingUpOutlined";
+import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
+import TrackChangesOutlinedIcon from "@mui/icons-material/TrackChangesOutlined";
+import EventNoteOutlinedIcon from "@mui/icons-material/EventNoteOutlined";
+import SyncAltOutlinedIcon from "@mui/icons-material/SyncAltOutlined";
+import AttachMoneyOutlinedIcon from "@mui/icons-material/AttachMoneyOutlined";
+import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
+import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
+import PeopleOutlineOutlinedIcon from "@mui/icons-material/PeopleOutlineOutlined";
 import type { SvgIconComponent } from "@mui/icons-material";
 
 import { ROUTE_PATHS } from "./routePaths";
@@ -24,20 +33,27 @@ export interface NavModule {
   items: NavItem[];
 }
 
-/** Demand Analysis: Forecast Alerts, Forecast Modification (pages show "Already developed") */
+/** Intelligent Planning: forecasting, collaborative planning, S&OP, financial, trade, analytics */
 export const MODULE_DEMAND_ANALYSIS: NavModule = {
-  id: "demand-analysis",
-  label: "Demand Analysis",
+  id: "intelligent-planning",
+  label: "Intelligent Planning",
   items: [
-    { id: "forecast-alerts", label: "Forecast Alerts", route: ROUTE_PATHS.demandForecastAlerts, icon: WarningAmberOutlinedIcon },
-    { id: "forecast-modification", label: "Forecast Modification", route: ROUTE_PATHS.demandForecastModification, icon: EditOutlinedIcon },
+    { id: "demand-forecasting", label: "Demand Forecasting", route: ROUTE_PATHS.demandForecasting, icon: TrendingUpOutlinedIcon },
+    { id: "collaborative-planning", label: "Collaborative Planning", route: ROUTE_PATHS.demandCollaborative, icon: GroupsOutlinedIcon },
+    { id: "forecast-accuracy", label: "Forecast Accuracy", route: ROUTE_PATHS.demandAccuracy, icon: TrackChangesOutlinedIcon },
+    { id: "sop-ibp", label: "S&OP / IBP", route: ROUTE_PATHS.demandSop, icon: EventNoteOutlinedIcon },  
+    { id: "supply-integration", label: "Supply Integration", route: ROUTE_PATHS.demandSupplyIntegration, icon: SyncAltOutlinedIcon },
+    { id: "financial-planning", label: "Financial Planning", route: ROUTE_PATHS.demandFinancial, icon: AttachMoneyOutlinedIcon },
+    { id: "trade-promotion", label: "Trade Promotion", route: ROUTE_PATHS.demandTradePromotion, icon: CampaignOutlinedIcon },
+    { id: "ibp-analytics", label: "Planning Analytics", route: ROUTE_PATHS.demandAnalytics, icon: AssessmentOutlinedIcon },
+    { id: "customer-hierarchy", label: "Customers", route: ROUTE_PATHS.demandCustomers, icon: PeopleOutlineOutlinedIcon },
   ],
 };
 
-/** MEIO and Replenishment: Dashboard, Network, Parameters, Replenishment, Analytics */
-export const MODULE_MEIO_REPLENISHMENT: NavModule = {
-  id: "meio-replenishment",
-  label: "MEIO and Replenishment",
+/** Smart Execution: Dashboard, Network, Parameters, Replenishment, Analytics */
+export const MODULE_PLANNING_REPLENISHMENT: NavModule = {
+  id: "smart-execution",
+  label: "Smart Execution",
   items: [
     { id: "dashboard", label: "Dashboard", route: ROUTE_PATHS.dashboard, icon: DashboardOutlinedIcon },
     { id: "network", label: "Network", route: ROUTE_PATHS.network, icon: HubOutlinedIcon },
@@ -59,7 +75,7 @@ export const MODULE_AGENTIC_AI: NavModule = {
 
 export const NAV_MODULES: NavModule[] = [
   MODULE_DEMAND_ANALYSIS,
-  MODULE_MEIO_REPLENISHMENT,
+  MODULE_PLANNING_REPLENISHMENT,
   MODULE_AGENTIC_AI,
 ];
 

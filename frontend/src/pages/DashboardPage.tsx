@@ -38,6 +38,7 @@ import {
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import { SectionCard } from "../components/shared/UiBits";
 import { appendGlobalFilters, firstFilterValue, globalFiltersKey, normalizedFilterList } from "../types/filters";
+import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import InventoryDiagnosticAgent from "./InventoryDiagnosticAgent";
 import ParameterDiagnosticAgent from "./ParameterDiagnosticAgent";
 
@@ -275,12 +276,12 @@ export default function DashboardPage() {
 
   return (
     <div className="page-scroll dashboard-page">
-      <SectionCard title="MEIO and Replenishment Dashboard" subtitle="Executive view for network, parameters, and replenishment exception control">
+      <SectionCard title="Planning and Replenishment Dashboard" subtitle="Executive view for network, parameters, and replenishment exception control">
         <div className="dashboard-page-tab">
       <Paper elevation={0} className="content-card dashboard-hero-card">
         <Stack direction={{ xs: "column", lg: "row" }} alignItems={{ xs: "flex-start", lg: "center" }} justifyContent="space-between" spacing={1}>
           <Stack spacing={0.4}>
-            <Typography variant="h6">MEIO Control Center</Typography>
+            <Typography variant="h6">Planning Control Center</Typography>
             <Typography variant="caption" color="text.secondary">
               Unified visibility across network alerts, parameter integrity, and replenishment exceptions
             </Typography>
@@ -343,24 +344,17 @@ export default function DashboardPage() {
           </Stack>
         </Stack>
         {!alertsDashboardCollapsed ? (
-          <div className="alerts-kpi-group-row">
+          <KpiCardRow>
             {alertsDashboardGroups.map((group) => (
-              <Box key={group.key} className={`alerts-kpi-group-card alerts-kpi-${group.tone}`}>
-                <Box className="alerts-kpi-group-head">
-                  <Box className="alerts-kpi-group-icon">{group.icon}</Box>
-                  <Typography className="alerts-kpi-group-title">{group.label}</Typography>
-                </Box>
-                <Stack spacing={0.5}>
-                  {group.items.map((item) => (
-                    <Box key={`${group.key}-${item.label}`} className="alerts-kpi-line">
-                      <Typography className="alerts-kpi-line-label">{item.label}</Typography>
-                      <Typography className="alerts-kpi-line-value">{item.value}</Typography>
-                    </Box>
-                  ))}
-                </Stack>
-              </Box>
+              <KpiCard
+                key={group.key}
+                title={group.label}
+                icon={group.icon}
+                tone={group.tone}
+                items={group.items.map(item => ({ label: item.label, value: item.value }))}
+              />
             ))}
-          </div>
+          </KpiCardRow>
         ) : null}
       </Paper>
       <div className="dashboard-domain-grid">
@@ -371,37 +365,31 @@ export default function DashboardPage() {
               <Typography variant="caption" color="text.secondary">Exception inventory and parameter coverage health</Typography>
             </div>
           </Stack>
-          <div className="alerts-kpi-group-row">
-            <Box className="alerts-kpi-group-card alerts-kpi-critical">
-              <Box className="alerts-kpi-group-head">
-                <Box className="alerts-kpi-group-icon">
-                  <WarningAmberOutlinedIcon fontSize="small" />
-                </Box>
-                <Typography className="alerts-kpi-group-title">Issues</Typography>
-              </Box>
-              <Stack spacing={0.5}>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Missing</Typography><Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.issueCounts.missing}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Stale</Typography><Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.issueCounts.stale}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Invalid</Typography><Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.issueCounts.invalid}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Misaligned</Typography><Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.issueCounts.misaligned}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Total exceptions</Typography><Typography className="alerts-kpi-line-value">{(exceptions ?? []).length}</Typography></Box>
-              </Stack>
-            </Box>
-            <Box className="alerts-kpi-group-card alerts-kpi-network">
-              <Box className="alerts-kpi-group-head">
-                <Box className="alerts-kpi-group-icon">
-                  <AssessmentOutlinedIcon fontSize="small" />
-                </Box>
-                <Typography className="alerts-kpi-group-title">Parameter Scope</Typography>
-              </Box>
-              <Stack spacing={0.5}>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Total parameters</Typography><Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.uniqueParams}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">SKUs with parameters</Typography><Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.uniqueSkus}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Nodes with parameters</Typography><Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.uniqueNodes}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Parameter records</Typography><Typography className="alerts-kpi-line-value">{exceptionDashboardMetrics.totalParamRecords}</Typography></Box>
-              </Stack>
-            </Box>
-          </div>
+          <KpiCardRow>
+            <KpiCard
+              title="Issues"
+              icon={<WarningAmberOutlinedIcon fontSize="small" />}
+              tone="critical"
+              items={[
+                { label: "Missing", value: String(exceptionDashboardMetrics.issueCounts.missing) },
+                { label: "Stale", value: String(exceptionDashboardMetrics.issueCounts.stale) },
+                { label: "Invalid", value: String(exceptionDashboardMetrics.issueCounts.invalid) },
+                { label: "Misaligned", value: String(exceptionDashboardMetrics.issueCounts.misaligned) },
+                { label: "Total exceptions", value: String((exceptions ?? []).length) },
+              ]}
+            />
+            <KpiCard
+              title="Parameter Scope"
+              icon={<AssessmentOutlinedIcon fontSize="small" />}
+              tone="network"
+              items={[
+                { label: "Total parameters", value: String(exceptionDashboardMetrics.uniqueParams) },
+                { label: "SKUs with parameters", value: String(exceptionDashboardMetrics.uniqueSkus) },
+                { label: "Nodes with parameters", value: String(exceptionDashboardMetrics.uniqueNodes) },
+                { label: "Parameter records", value: String(exceptionDashboardMetrics.totalParamRecords) },
+              ]}
+            />
+          </KpiCardRow>
         </Paper>
 
         <Paper elevation={0} className="content-card dashboard-section-card">
@@ -411,56 +399,47 @@ export default function DashboardPage() {
               <Typography variant="caption" color="text.secondary">Execution bottlenecks and cost impact dashboard</Typography>
             </div>
           </Stack>
-          <div className="alerts-kpi-group-row">
-            <Box className="alerts-kpi-group-card alerts-kpi-critical">
-              <Box className="alerts-kpi-group-head">
-                <Typography className="alerts-kpi-group-title">By Status</Typography>
-              </Box>
-              <Stack spacing={0.5}>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Open</Typography><Typography className="alerts-kpi-line-value">{orderDashboardMetrics.statusCounts.open}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">In Progress</Typography><Typography className="alerts-kpi-line-value">{orderDashboardMetrics.statusCounts.in_progress}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Blocked</Typography><Typography className="alerts-kpi-line-value">{orderDashboardMetrics.statusCounts.blocked}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Escalated</Typography><Typography className="alerts-kpi-line-value">{orderDashboardMetrics.statusCounts.escalated}</Typography></Box>
-              </Stack>
-            </Box>
-            <Box className="alerts-kpi-group-card alerts-kpi-network">
-              <Box className="alerts-kpi-group-head">
-                <Typography className="alerts-kpi-group-title">By Actions</Typography>
-              </Box>
-              <Stack spacing={0.5}>
-                {orderDashboardMetrics.topActions.length ? orderDashboardMetrics.topActions.map(([action, count]) => (
-                  <Box key={action} className="alerts-kpi-line">
-                    <Typography className="alerts-kpi-line-label">{action}</Typography>
-                    <Typography className="alerts-kpi-line-value">{count}</Typography>
-                  </Box>
-                )) : (
-                  <Typography className="alerts-kpi-line-label">No actions in current filter.</Typography>
-                )}
-              </Stack>
-            </Box>
-            <Box className="alerts-kpi-group-card alerts-kpi-demand">
-              <Box className="alerts-kpi-group-head">
-                <Typography className="alerts-kpi-group-title">Statistics</Typography>
-              </Box>
-              <Stack spacing={0.5}>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Delayed Orders</Typography><Typography className="alerts-kpi-line-value">{orderDashboardMetrics.delayedOrders}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Update Not Possible</Typography><Typography className="alerts-kpi-line-value">{orderDashboardMetrics.updateNotPossible}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Product Lines Impacted</Typography><Typography className="alerts-kpi-line-value">{orderDashboardMetrics.impactedProductLines}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Avg Lead Time</Typography><Typography className="alerts-kpi-line-value">{orderDashboardMetrics.avgLeadTime.toFixed(2)} d</Typography></Box>
-              </Stack>
-            </Box>
-            <Box className="alerts-kpi-group-card alerts-kpi-money">
-              <Box className="alerts-kpi-group-head">
-                <Typography className="alerts-kpi-group-title">Financial & Linkage</Typography>
-              </Box>
-              <Stack spacing={0.5}>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Exception Orders</Typography><Typography className="alerts-kpi-line-value">{orderDashboardMetrics.totalRows}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Linked Alerts</Typography><Typography className="alerts-kpi-line-value">{orderDashboardMetrics.linkedAlerts}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Total Order Cost</Typography><Typography className="alerts-kpi-line-value">${Math.round(orderDashboardMetrics.totalCost).toLocaleString()}</Typography></Box>
-                <Box className="alerts-kpi-line"><Typography className="alerts-kpi-line-label">Outcome</Typography><Typography className="alerts-kpi-line-value">Orders + Exceptions</Typography></Box>
-              </Stack>
-            </Box>
-          </div>
+          <KpiCardRow>
+            <KpiCard
+              title="By Status"
+              tone="critical"
+              items={[
+                { label: "Open", value: String(orderDashboardMetrics.statusCounts.open) },
+                { label: "In Progress", value: String(orderDashboardMetrics.statusCounts.in_progress) },
+                { label: "Blocked", value: String(orderDashboardMetrics.statusCounts.blocked) },
+                { label: "Escalated", value: String(orderDashboardMetrics.statusCounts.escalated) },
+              ]}
+            />
+            <KpiCard
+              title="By Actions"
+              tone="network"
+              items={
+                orderDashboardMetrics.topActions.length
+                  ? orderDashboardMetrics.topActions.map(([action, count]) => ({ label: action, value: String(count) }))
+                  : [{ label: "No actions in current filter.", value: "" }]
+              }
+            />
+            <KpiCard
+              title="Statistics"
+              tone="demand"
+              items={[
+                { label: "Delayed Orders", value: String(orderDashboardMetrics.delayedOrders) },
+                { label: "Update Not Possible", value: String(orderDashboardMetrics.updateNotPossible) },
+                { label: "Product Lines Impacted", value: String(orderDashboardMetrics.impactedProductLines) },
+                { label: "Avg Lead Time", value: `${orderDashboardMetrics.avgLeadTime.toFixed(2)} d` },
+              ]}
+            />
+            <KpiCard
+              title="Financial & Linkage"
+              tone="money"
+              items={[
+                { label: "Exception Orders", value: String(orderDashboardMetrics.totalRows) },
+                { label: "Linked Alerts", value: String(orderDashboardMetrics.linkedAlerts) },
+                { label: "Total Order Cost", value: `$${Math.round(orderDashboardMetrics.totalCost).toLocaleString()}` },
+                { label: "Outcome", value: "Orders + Exceptions" },
+              ]}
+            />
+          </KpiCardRow>
         </Paper>
       </div>
         </div>

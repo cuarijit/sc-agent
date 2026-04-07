@@ -52,18 +52,37 @@ function toSqliteUrl(filePath) {
   return `sqlite:///${filePath.replace(/\\/g, "/")}`;
 }
 
-function ensureRuntimeDatabase() {
-  const userDataDir = app.getPath("userData");
-  const runtimeDataDir = path.join(userDataDir, "backend-data");
-  fs.mkdirSync(runtimeDataDir, { recursive: true });
-
-  const runtimeDbPath = path.join(runtimeDataDir, "meio.runtime.db");
-  if (fs.existsSync(runtimeDbPath)) {
-    return runtimeDbPath;
+function ensureDatabaseFile(filePath, sourcePath = "") {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  if (fs.existsSync(filePath)) {
+    return filePath;
   }
 
-  fs.closeSync(fs.openSync(runtimeDbPath, "w"));
-  return runtimeDbPath;
+  if (sourcePath && fs.existsSync(sourcePath)) {
+    fs.copyFileSync(sourcePath, filePath);
+    return filePath;
+  }
+
+  fs.closeSync(fs.openSync(filePath, "w"));
+  return filePath;
+}
+
+function ensureRuntimeDatabase() {
+  const explicitDbPath = process.env.MEIO_DESKTOP_DB_PATH || process.env.MEIO_DATABASE_PATH;
+  if (explicitDbPath) {
+    return ensureDatabaseFile(path.resolve(explicitDbPath));
+  }
+
+  if (!app.isPackaged) {
+    const repoRuntimePath = path.resolve(__dirname, "..", "..", "backend", "data", "meio.runtime.db");
+    return ensureDatabaseFile(repoRuntimePath);
+  }
+
+  const userDataDir = app.getPath("userData");
+  const runtimeDataDir = path.join(userDataDir, "backend-data");
+  const runtimeDbPath = path.join(runtimeDataDir, "meio.runtime.db");
+  const bundledRuntimeDbPath = path.join(process.resourcesPath, "backend", "data", "meio.runtime.db");
+  return ensureDatabaseFile(runtimeDbPath, bundledRuntimeDbPath);
 }
 
 function startBackend() {
@@ -202,7 +221,8 @@ function createWindow() {
     return;
   }
 
-  win.loadURL("http://localhost:5174");
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5174";
+  win.loadURL(devServerUrl);
   win.webContents.openDevTools({ mode: "detach" });
 }
 
