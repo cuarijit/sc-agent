@@ -27,7 +27,6 @@ export default function NetworkGraphModal({
   const isReady = open && Boolean(normalizedSku);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(1);
-  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [viewport, setViewport] = useState({ left: 0, top: 0, width: 0, height: 0 });
 
   const params = useMemo(() => {
@@ -59,7 +58,7 @@ export default function NetworkGraphModal({
     };
   }, [masterDataOptions?.products, normalizedSku]);
 
-  const LAYOUT = useMemo(() => ({ COLUMN_SPACING: 340, ROW_SPACING: 93, PADDING: 22 }), []);
+  const LAYOUT = useMemo(() => ({ COLUMN_SPACING: 360, ROW_SPACING: 100, PADDING: 24 }), []);
   const viewFlowNodes = useMemo<ViewFlowNode[]>(() => {
     const nodes = networkView?.graph_nodes ?? [];
     const edges = networkView?.graph_edges ?? [];
@@ -202,29 +201,6 @@ export default function NetworkGraphModal({
     return () => cancelAnimationFrame(raf);
   }, [open, fitToView, normalizedSku]);
 
-  function pointOnRectBoundary(
-    left: number,
-    top: number,
-    width: number,
-    height: number,
-    toX: number,
-    toY: number,
-  ): { x: number; y: number } {
-    const cx = left + width / 2;
-    const cy = top + height / 2;
-    let dx = toX - cx;
-    let dy = toY - cy;
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    dx /= len;
-    dy /= len;
-    let tMin = Infinity;
-    if (dx > 0) tMin = Math.min(tMin, (left + width - cx) / dx);
-    if (dx < 0) tMin = Math.min(tMin, (left - cx) / dx);
-    if (dy > 0) tMin = Math.min(tMin, (top + height - cy) / dy);
-    if (dy < 0) tMin = Math.min(tMin, (top - cy) / dy);
-    return { x: cx + tMin * dx, y: cy + tMin * dy };
-  }
-
   return (
     <Dialog
       open={open}
@@ -269,13 +245,13 @@ export default function NetworkGraphModal({
                   className="network-canvas-shell network-canvas-shell-expanded"
                   style={{ width: Math.max(canvasSize.width * scale, viewport.width || 0), height: Math.max(canvasSize.height * scale, viewport.height || 0) }}
                 >
-                  <svg className="network-edge-svg" width={Math.max(canvasSize.width * scale, viewport.width || 0)} height={Math.max(canvasSize.height * scale, viewport.height || 0)} style={{ pointerEvents: "auto" }}>
+                  <svg className="network-edge-svg" width={Math.max(canvasSize.width * scale, viewport.width || 0)} height={Math.max(canvasSize.height * scale, viewport.height || 0)} style={{ pointerEvents: "none" }}>
                     <defs>
-                      <marker id="network-modal-arrow-push" markerWidth={8} markerHeight={8} refX={7} refY={3} orient="auto">
-                        <path d="M0,0 L0,6 L7,3 Z" fill="#0f172a" />
+                      <marker id="network-modal-arrow-push" markerWidth={10} markerHeight={10} refX={9} refY={5} orient="auto">
+                        <path d="M2,2 L8,5 L2,8" fill="none" stroke="#475569" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
                       </marker>
-                      <marker id="network-modal-arrow-pull" markerWidth={8} markerHeight={8} refX={7} refY={3} orient="auto">
-                        <path d="M0,0 L0,6 L7,3 Z" fill="#2563eb" />
+                      <marker id="network-modal-arrow-pull" markerWidth={10} markerHeight={10} refX={9} refY={5} orient="auto">
+                        <path d="M2,2 L8,5 L2,8" fill="none" stroke="#0284c7" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
                       </marker>
                     </defs>
                     {viewFlowEdges.map((edge) => {
@@ -286,32 +262,36 @@ export default function NetworkGraphModal({
                       const tgtSize = nodeSizes.get(edge.target) ?? { w: 116, h: 46 };
                       const src = { x: sourcePos.x * scale, y: sourcePos.y * scale, w: srcSize.w * scale, h: srcSize.h * scale };
                       const tgt = { x: targetPos.x * scale, y: targetPos.y * scale, w: tgtSize.w * scale, h: tgtSize.h * scale };
-                      const start = pointOnRectBoundary(src.x, src.y, src.w, src.h, tgt.x + tgt.w / 2, tgt.y + tgt.h / 2);
-                      const end = pointOnRectBoundary(tgt.x, tgt.y, tgt.w, tgt.h, src.x + src.w / 2, src.y + src.h / 2);
                       const isPull = edge.label === "PULL";
-                      const stroke = isPull ? "#2563eb" : "#0f172a";
+                      const stroke = isPull ? "#0284c7" : "#475569";
                       const markerEnd = isPull ? "url(#network-modal-arrow-pull)" : "url(#network-modal-arrow-push)";
-                      const path = `M ${start.x} ${start.y} C ${(start.x + end.x) / 2} ${start.y}, ${(start.x + end.x) / 2} ${end.y}, ${end.x} ${end.y}`;
-                      const midX = (start.x + end.x) / 2;
-                      const midY = (start.y + end.y) / 2 - 5;
-                      const isHovered = hoveredEdgeId === edge.id;
+                      const sx = src.x + src.w;
+                      const sy = src.y + src.h / 2;
+                      const ex = tgt.x;
+                      const ey = tgt.y + tgt.h / 2;
+                      const dx = ex - sx;
+                      const cp = dx * 0.4;
+                      const path = Math.abs(ey - sy) < 2
+                        ? `M${sx},${sy} L${ex},${ey}`
+                        : `M${sx},${sy} C${sx + cp},${sy} ${ex - cp},${ey} ${ex},${ey}`;
+                      const labelX = (sx + ex) / 2;
+                      const labelY = (sy + ey) / 2 - 6;
+                      const baseWidth = (isPull ? 1.8 : 1.5) * Math.min(1.2, Math.max(0.8, scale));
                       return (
                         <g key={edge.id}>
                           <path
                             d={path}
                             fill="none"
                             stroke={stroke}
-                            strokeWidth={(isPull ? 2.5 : 2.0) + (isHovered ? 0.9 : 0)}
-                            strokeDasharray={isPull ? "5 4" : "0"}
+                            strokeWidth={baseWidth}
+                            strokeDasharray={isPull ? "6 4" : "0"}
                             markerEnd={markerEnd}
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            pointerEvents="stroke"
-                            onMouseEnter={() => setHoveredEdgeId(edge.id)}
-                            onMouseLeave={() => setHoveredEdgeId((curr) => (curr === edge.id ? null : curr))}
+                            opacity={0.55}
                           />
-                          {(scale >= 0.95 || isHovered) ? (
-                            <text x={midX} y={midY} className="network-edge-label" textAnchor="middle" style={{ opacity: isHovered ? 1 : 0.86 }}>
+                          {scale >= 0.95 ? (
+                            <text x={labelX} y={labelY} className="network-edge-label" textAnchor="middle" style={{ opacity: 0.7 }}>
                               {edge.label}
                             </text>
                           ) : null}

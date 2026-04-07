@@ -351,9 +351,9 @@ export default function NetworkPage() {
   const displayedNodes = scenarioDetail?.nodes ?? baseline?.nodes ?? [];
 
   const LAYOUT = useMemo(() => {
-    const COLUMN_SPACING = 340;
-    const ROW_SPACING = 93;
-    const PADDING = 22;
+    const COLUMN_SPACING = 360;
+    const ROW_SPACING = 100;
+    const PADDING = 24;
     return { COLUMN_SPACING, ROW_SPACING, PADDING };
   }, []);
 
@@ -986,14 +986,31 @@ export default function NetworkPage() {
         <div
           className={`network-canvas-shell ${expanded ? "network-canvas-shell-expanded" : ""}`}
           style={{ width, height, minWidth: width, minHeight: height }}
+          onMouseDown={(e) => {
+            const nodeEl = (e.target as HTMLElement).closest("[data-node-id]") as HTMLElement | null;
+            if (!nodeEl) return;
+            const nodeId = nodeEl.getAttribute("data-node-id");
+            if (!nodeId) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const off = networkNodeDragOffsets[nodeId];
+            setNetworkDragging({
+              nodeId,
+              startClientX: e.clientX,
+              startClientY: e.clientY,
+              startDx: off?.dx ?? 0,
+              startDy: off?.dy ?? 0,
+              scale,
+            });
+          }}
         >
-          <svg className="network-edge-svg" width={width} height={height} style={{ pointerEvents: "auto" }}>
+          <svg className="network-edge-svg" width={width} height={height} style={{ pointerEvents: "none" }}>
             <defs>
-              <marker id="network-arrow-push" markerWidth={8} markerHeight={8} refX={7} refY={3} orient="auto">
-                <path d="M0,0 L0,6 L7,3 Z" fill="#0f172a" />
+              <marker id="network-arrow-push" markerWidth={10} markerHeight={10} refX={9} refY={5} orient="auto">
+                <path d="M2,2 L8,5 L2,8" fill="none" stroke="#475569" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
               </marker>
-              <marker id="network-arrow-pull" markerWidth={8} markerHeight={8} refX={7} refY={3} orient="auto">
-                <path d="M0,0 L0,6 L7,3 Z" fill="#2563eb" />
+              <marker id="network-arrow-pull" markerWidth={10} markerHeight={10} refX={9} refY={5} orient="auto">
+                <path d="M2,2 L8,5 L2,8" fill="none" stroke="#0284c7" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
               </marker>
             </defs>
             {viewFlowEdges.map((edge) => {
@@ -1007,57 +1024,41 @@ export default function NetworkPage() {
               const scaledSrcSize = { w: srcSize.w * scale * nodeBoxFactor, h: srcSize.h * scale * nodeBoxFactor };
               const scaledTgtSize = { w: tgtSize.w * scale * nodeBoxFactor, h: tgtSize.h * scale * nodeBoxFactor };
               const isPull = String(edge.label ?? "").toUpperCase() === "PULL";
-              const stroke = isPull ? "#2563eb" : "#0f172a";
+              const stroke = isPull ? "#0284c7" : "#475569";
               const markerEnd = isPull ? "url(#network-arrow-pull)" : "url(#network-arrow-push)";
-              const srcBox = { left: scaledSourcePos.x, top: scaledSourcePos.y, w: scaledSrcSize.w, h: scaledSrcSize.h };
-              const tgtBox = { left: scaledTargetPos.x, top: scaledTargetPos.y, w: scaledTgtSize.w, h: scaledTgtSize.h };
-              const srcCx = scaledSourcePos.x + scaledSrcSize.w / 2;
-              const srcCy = scaledSourcePos.y + scaledSrcSize.h / 2;
-              const tgtCx = scaledTargetPos.x + scaledTgtSize.w / 2;
-              const tgtCy = scaledTargetPos.y + scaledTgtSize.h / 2;
-              const start = pointOnRectBoundary(srcBox.left, srcBox.top, srcBox.w, srcBox.h, srcCx, srcCy, tgtCx, tgtCy);
-              const end = pointOnRectBoundary(tgtBox.left, tgtBox.top, tgtBox.w, tgtBox.h, tgtCx, tgtCy, srcCx, srcCy);
-              const edgeOrder = edgeOrderById.get(edge.id);
-              const edgeLane = edgeLaneById.get(edge.id);
-              const isHovered = activeHoveredEdgeId === edge.id;
-              const laneOffset = edgeLane
-                ? (edgeLane.laneIdx - (edgeLane.laneCount - 1) / 2) * 10 * Math.max(0.7, scale)
-                : edgeOrder
-                  ? (edgeOrder.idx - (edgeOrder.count - 1) / 2) * 8 * Math.max(0.7, scale)
-                  : 0;
-              const ctrlX = start.x + (end.x - start.x) * 0.52;
-              const path = `M ${start.x} ${start.y} C ${ctrlX} ${start.y + laneOffset}, ${ctrlX} ${end.y + laneOffset}, ${end.x} ${end.y}`;
-              const midX = (start.x + end.x) / 2 + 2;
-              const midY = (start.y + end.y) / 2 - 5;
-              const showLabel = scale >= 0.95 || isHovered;
+              const sx = scaledSourcePos.x + scaledSrcSize.w;
+              const sy = scaledSourcePos.y + scaledSrcSize.h / 2;
+              const ex = scaledTargetPos.x;
+              const ey = scaledTargetPos.y + scaledTgtSize.h / 2;
+              const dx = ex - sx;
+              const cp = dx * 0.4;
+              const path = Math.abs(ey - sy) < 2
+                ? `M${sx},${sy} L${ex},${ey}`
+                : `M${sx},${sy} C${sx + cp},${sy} ${ex - cp},${ey} ${ex},${ey}`;
+              const labelX = (sx + ex) / 2;
+              const labelY = (sy + ey) / 2 - 6;
+              const showLabel = scale >= 0.95;
+              const baseWidth = (isPull ? 1.8 : 1.5) * Math.min(1.2, Math.max(0.8, scale));
               return (
                 <g key={edge.id}>
                   <path
                     d={path}
                     fill="none"
                     stroke={stroke}
-                    strokeWidth={(isPull ? 2.5 : 2.0) * Math.min(1.15, Math.max(0.82, scale)) + (isHovered ? 0.9 : 0)}
-                    strokeDasharray={isPull ? "5 4" : "0"}
+                    strokeWidth={baseWidth}
+                    strokeDasharray={isPull ? "6 4" : "0"}
                     markerEnd={markerEnd}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    pointerEvents="stroke"
-                    onMouseEnter={() => {
-                      if (expanded) setHoveredEdgeIdExpanded(edge.id);
-                      else setHoveredEdgeId(edge.id);
-                    }}
-                    onMouseLeave={() => {
-                      if (expanded) setHoveredEdgeIdExpanded((curr) => (curr === edge.id ? null : curr));
-                      else setHoveredEdgeId((curr) => (curr === edge.id ? null : curr));
-                    }}
+                    opacity={0.55}
                   />
                   {showLabel ? (
                     <text
-                      x={midX}
-                      y={midY}
+                      x={labelX}
+                      y={labelY}
                       className="network-edge-label"
                       textAnchor="middle"
-                      style={{ opacity: isHovered ? 1 : 0.86 }}
+                      style={{ opacity: 0.7 }}
                     >
                       {String(edge.label ?? "")}
                     </text>
@@ -1092,18 +1093,18 @@ export default function NetworkPage() {
             const nodeSeverity = nodeAlertSeverityByNodeId.get(node.id) ?? "info";
             return (
               <Fragment key={node.id}>
-                <Box
+                <div
+                  data-node-id={node.id}
                   className={`network-node-card ${typeClass} ${isSelected ? "network-node-selected" : ""} ${networkDragging?.nodeId === node.id ? "network-node-dragging" : ""}`}
-                  style={{ left: scaledPos.x, top: scaledPos.y, width: scaledSize.w, minHeight: scaledSize.h }}
-                  sx={expanded ? { p: 0.45 } : undefined}
-                  onClick={() => {
+                  style={{ left: scaledPos.x, top: scaledPos.y, width: scaledSize.w, minHeight: scaledSize.h, ...(expanded ? { padding: "3.6px" } : {}) }}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (networkJustFinishedDrag) {
                       setNetworkJustFinishedDrag(false);
                       return;
                     }
                     setSelectedInsightNodeId(node.id);
                   }}
-                  onMouseDown={(e) => handleNetworkNodeMouseDown(e, node.id, scale)}
                 >
                   <Typography variant="caption" className="network-node-title" sx={expanded ? { fontSize: "0.5rem", lineHeight: 1.1 } : undefined}>
                     {String(node.node?.name ?? node.id).slice(0, 22)}
@@ -1163,7 +1164,7 @@ export default function NetworkPage() {
                       </IconButton>
                     </Tooltip>
                   </Stack>
-                </Box>
+                </div>
               </Fragment>
             );
           })}
