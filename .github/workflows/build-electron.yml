@@ -133,13 +133,68 @@ jobs:
           path: release/*.dmg
           retention-days: 30
 
+  build-windows:
+    runs-on: windows-latest
+    name: Windows x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pyinstaller
+
+      - name: Build backend binary (PyInstaller)
+        run: |
+          python -m PyInstaller --noconfirm --clean --distpath backend/dist-electron backend-api.spec
+
+      - name: Verify backend binary
+        run: |
+          Get-Item backend\dist-electron\backend-api\backend-api.exe | Select-Object FullName, Length
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build Electron Windows installer
+        working-directory: frontend
+        run: npx electron-builder --win nsis --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: exe-win-x64
+          path: release/*.exe
+          retention-days: 30
+
   release:
-    needs: [build-mac-arm64, build-mac-x64]
+    needs: [build-mac-arm64, build-mac-x64, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
-      - name: Download all DMG artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -151,7 +206,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*.dmg
+          files: |
+            artifacts/*.dmg
+            artifacts/*.exe
           generate_release_notes: true
           draft: false
         env:
