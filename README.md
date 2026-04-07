@@ -1,76 +1,73 @@
-# Inventory Planning and Optimization
+# Supply Chain Planning and Execution
 
-This workspace contains a scaffolded full-stack MVP for a planner-facing Inventory Planning and Optimization application.
+A full-stack application for Inventory Planning and Optimization, Intelligent Planning (IBP), and Smart Execution.
 
-## Backend
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/cuarijit/sc-agent)
 
-- `backend/app/main.py`
-- FastAPI API with seeded deterministic planning, scenario, recommendation, parameter-governance, and chat endpoints
+## Quick Start
 
-Run:
+### Web App (Docker)
 
 ```bash
-python3.12 -m uvicorn backend.app.main:app --reload --port 8000
+docker compose up --build
 ```
 
-## Frontend
+App available at `http://localhost` (frontend) with API at `http://localhost:8000`.
 
-- `frontend/`
-- React + TypeScript + MUI shell with fixed left nav, fixed top header, routed pages, and global filters
-- Layout and visual direction are adapted from `/Users/arijitchoudhuri/ai_app/dcai_ai_agent/ui`
+### Cloud Deploy (Render)
 
-Run:
+Click the **Deploy to Render** button above, or:
+
+1. Go to [render.com](https://render.com) → **New** → **Blueprint**
+2. Select the `cuarijit/sc-agent` repository
+3. Click **Deploy Blueprint**
+4. Access at `https://supply-chain-planning.onrender.com`
+
+Auto-redeploys on every push to `main`.
+
+### Local Development
 
 ```bash
+# Backend
+python3.12 -m uvicorn backend.app.main:app --reload --port 8000
+
+# Frontend (separate terminal)
 cd frontend
 npm install
 npm run dev
 ```
 
-## Desktop App (Electron + Local Backend)
+Frontend at `http://localhost:5174`, API at `http://localhost:8000`.
 
-The frontend can be distributed as a self-contained desktop app (Windows and macOS) that starts its own local backend API and uses a self-contained SQLite DB.
+## Desktop Apps (Electron)
 
-### What is bundled
+Self-contained desktop apps with bundled backend — no Python or Node.js needed on user machines.
 
-- Electron desktop shell (frontend UI)
-- Local backend executable (`backend-api.exe` on Windows, `backend-api` on macOS)
-- Seed data folder (`backend/data/*`)
-- Runtime DB copied to user profile on first launch
+### CI/CD (GitHub Actions)
 
-### Build Windows installer
+Desktop apps are built automatically on every push to `main`. Download from the **Actions** tab → **Artifacts**.
+
+To create a GitHub Release with downloadable installers:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+### Manual Build
 
 ```bash
 cd frontend
 npm install
+
+# macOS (Apple Silicon)
+npm run electron:dist:mac
+
+# Windows (run on Windows)
 npm run electron:dist:win
 ```
 
-Output:
-
-- `release/Supply Planning Desktop-Setup-<version>.exe`
-
-Important:
-
-- Build the Windows installer on a Windows machine so the bundled backend executable is `backend-api.exe`.
-- Building `electron:dist:win` on macOS/Linux can produce a Windows installer shell but with a non-Windows backend binary, which fails at app startup on Windows.
-- Build scripts now include platform guards and will fail fast if run on the wrong OS.
-
-### Build macOS app packages
-
-```bash
-cd frontend
-npm install
-npm run electron:dist:mac
-```
-
-Output examples:
-
-- `release/Supply Planning Desktop-<version>-arm64.dmg`
-- `release/Supply Planning Desktop-<version>-x64.dmg`
-- matching `.zip` artifacts for each architecture
-
-### Development desktop run
+### Development Desktop Run
 
 ```bash
 cd frontend
@@ -78,32 +75,45 @@ npm install
 npm run electron:dev
 ```
 
-Notes:
+## Modules
 
-- In dev mode, Electron starts backend via local Python + Uvicorn.
-- In packaged mode, Electron starts bundled backend executable for the current OS.
-- The desktop app uses `http://127.0.0.1:8000` when running from `file://`.
+### Intelligent Planning (IBP)
+- Demand Planning & Forecasting (with Puls8 360 ADS)
+- Collaborative Planning (editable consensus workbench)
+- Forecast Accuracy & Exception Management
+- S&OP / IBP Cycle Support
+- Supply & Inventory Integration
+- Financial Planning
+- Trade Promotions
+- Planning Analytics
+- Customer Management
 
-## Reseeding (replace network / full seed)
+### Smart Execution
+- Dashboard & KPIs
+- Network Optimization
+- Replenishment Planning
+- Parameter Governance
+- Inventory Projection Workbench
+- Scenario Analysis
 
-To **replace only network data** (network_nodes, network_sourcing_rules, network_lanes, and related tables) with the demo hierarchy (1 plant, 2 CDCs, 5 RDCs, 35 stores, single sourcing), run with the API already up:
+## Architecture
+
+| Layer | Tech |
+|-------|------|
+| Frontend | React 19, TypeScript, MUI 7, Recharts, Vite |
+| Backend | FastAPI, SQLAlchemy, SQLite, Pydantic |
+| Desktop | Electron, PyInstaller |
+| CI/CD | GitHub Actions → GHCR (Docker) + Electron builds |
+| Deploy | Render.com (free tier), Docker Compose |
+
+## Reseeding Data
 
 ```bash
-# From project root, API on port 8000
-bash backend/scripts/reseed_network.sh
-```
-
-Or call the endpoint directly:
-
-```bash
+# Replace network data only
 curl -X POST http://127.0.0.1:8000/api/network/reseed
-```
 
-To **drop and repopulate all seed data** (products, locations, documents, network, etc.):
-
-```bash
-bash backend/scripts/reseed_full.sh
-# or: curl -X POST http://127.0.0.1:8000/api/documents/ingest
+# Full reseed
+curl -X POST http://127.0.0.1:8000/api/documents/ingest
 ```
 
 ## Tests
@@ -112,19 +122,3 @@ bash backend/scripts/reseed_full.sh
 pip install -r backend/requirements.txt
 python3.12 -m pytest backend/tests
 ```
-
-## Docker
-
-```bash
-docker compose up --build
-```
-
-## Included pages
-
-- Dashboard
-- Recommendations
-- SKU Detail
-- Scenarios
-- Parameters
-- Parameter Detail
-- Planner Chat
