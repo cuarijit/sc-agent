@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi import Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from .database import DATABASE_PATH, DATABASE_URL, SessionLocal
@@ -1066,3 +1070,16 @@ def get_demand_planning_kpis(
         "demand_vs_supply_gap": demand_vs_supply_gap,
         "promo_impact_summary": promo_impact_summary,
     }
+
+
+# ── Serve frontend static files when deployed as a single container ──
+_STATIC_DIR = Path(os.getenv("ASC_STATIC_DIR", Path(__file__).resolve().parents[2] / "frontend" / "dist"))
+if _STATIC_DIR.is_dir() and (_STATIC_DIR / "index.html").exists():
+    app.mount("/assets", StaticFiles(directory=str(_STATIC_DIR / "assets")), name="static-assets")
+
+    @app.get("/{full_path:path}")
+    async def _spa_fallback(full_path: str):
+        file_path = _STATIC_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(_STATIC_DIR / "index.html"))

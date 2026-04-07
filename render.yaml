@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: supply-chain-planning
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: ASC_DATABASE_PATH
+        value: /app/backend/data/asc.db
+      - key: ASC_SEED_DIR
+        value: /app/backend/data/seed
+      - key: ASC_STATIC_DIR
+        value: /app/frontend/dist
