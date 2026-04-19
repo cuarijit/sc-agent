@@ -10,22 +10,7 @@ import { type GridColDef, type GridRenderCellParams } from "@mui/x-data-grid";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Scatter,
-  ScatterChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-  ZAxis,
-} from "recharts";
-
+import { BarChart, LineChart, ScatterChart } from "../charts";
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
@@ -384,20 +369,18 @@ export default function DemandTradePromotionPage() {
                     Weekly promotion volume & spend
                   </Typography>
                   <div className="chart-shell">
-                    <ResponsiveContainer width="100%" height={280}>
-                      <ComposedChart data={promoByWeek} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="weekLabel" tick={{ fontSize: 10 }} />
-                        <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
-                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} />
-                        <Tooltip contentStyle={{ fontSize: 11 }} />
-                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                        <Bar yAxisId="left" dataKey="baseVol" name="Base Volume" fill="#2563eb" radius={[3, 3, 0, 0]} barSize={16} />
-                        <Bar yAxisId="left" dataKey="liftVol" name="Lift Volume" fill="#16a34a" radius={[3, 3, 0, 0]} barSize={16} />
-                        <Line yAxisId="right" type="monotone" dataKey="tradeSpend" name="Trade Spend" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
-                        <Line yAxisId="right" type="monotone" dataKey="avgRoi" name="Avg ROI" stroke="#7c3aed" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 3 }} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
+                    <LineChart
+                      chartId="demand-tpm-weekly-volume"
+                      data={promoByWeek}
+                      xKey="weekLabel"
+                      height={280}
+                      series={[
+                        { field: "baseVol", label: "Base Volume", type: "bar", color: "#2563eb" },
+                        { field: "liftVol", label: "Lift Volume", type: "bar", color: "#16a34a" },
+                        { field: "tradeSpend", label: "Trade Spend", type: "line", color: "#f59e0b", strokeWidth: 2 },
+                        { field: "avgRoi", label: "Avg ROI", type: "line", color: "#7c3aed", strokeWidth: 2, strokeDasharray: "dashed" },
+                      ]}
+                    />
                   </div>
                 </Box>
 
@@ -476,23 +459,13 @@ export default function DemandTradePromotionPage() {
                 Lift volume by promotion
               </Typography>
               <div className="chart-shell" style={{ minHeight: 320 }}>
-                <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={liftByPromotion} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      formatter={(v: number) => [v.toLocaleString(), "Lift volume"]}
-                      labelFormatter={(_l, payload) => {
-                        const p = payload?.[0]?.payload as (typeof liftByPromotion)[0] | undefined;
-                        return p?.fullName ?? "";
-                      }}
-                      contentStyle={{ fontSize: 11 }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="lift" name="Lift volume" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <BarChart
+                  chartId="demand-tpm-lift-by-promotion"
+                  data={liftByPromotion}
+                  xKey="name"
+                  height={320}
+                  series={[{ field: "lift", label: "Lift volume", color: "#2563eb" }]}
+                />
               </div>
               <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
                 ROI vs trade spend
@@ -501,28 +474,25 @@ export default function DemandTradePromotionPage() {
                 Bubble area reflects lift volume (larger promotions).
               </Typography>
               <div className="chart-shell" style={{ minHeight: 320 }}>
-                <ResponsiveContainer width="100%" height={320}>
-                  <ScatterChart margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" dataKey="trade_spend" name="Trade spend" tick={{ fontSize: 11 }} />
-                    <YAxis type="number" dataKey="roi" name="ROI" tick={{ fontSize: 11 }} />
-                    <ZAxis type="number" dataKey="lift_volume" range={[40, 400]} name="Lift" />
-                    <Tooltip
-                      cursor={{ strokeDasharray: "3 3" }}
-                      formatter={(v: number, name: string) => {
-                        if (name === "Lift") return [v.toLocaleString(), "Lift volume"];
-                        return [v, name];
-                      }}
-                      labelFormatter={(_l, payload) => {
-                        const p = payload?.[0]?.payload as (typeof roiVsSpend)[0] | undefined;
-                        return p ? `${p.promo_id} — ${p.promo_name}` : "";
-                      }}
-                      contentStyle={{ fontSize: 11 }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Scatter name="Promotions" data={roiVsSpend} fill="#7c3aed" />
-                  </ScatterChart>
-                </ResponsiveContainer>
+                <ScatterChart
+                  chartId="demand-tpm-roi-vs-spend"
+                  data={roiVsSpend}
+                  xField="trade_spend"
+                  yField="roi"
+                  sizeField="lift_volume"
+                  xLabel="Trade spend"
+                  yLabel="ROI"
+                  height={320}
+                  defaultColor="#7c3aed"
+                  tooltipFields={["promo_id", "promo_name"]}
+                  aliasOf={(f) =>
+                    f === "trade_spend" ? "Trade spend" :
+                    f === "roi" ? "ROI" :
+                    f === "lift_volume" ? "Lift volume" :
+                    f === "promo_id" ? "Promo ID" :
+                    f === "promo_name" ? "Promo name" : f
+                  }
+                />
               </div>
             </Stack>
           ) : null}
@@ -536,19 +506,17 @@ export default function DemandTradePromotionPage() {
                 Each promotion’s lift is spread evenly across its active weeks and appears as planned incremental volume in the IBP horizon.
               </Typography>
               <div className="chart-shell" style={{ minHeight: 320 }}>
-                <ResponsiveContainer width="100%" height={320}>
-                  <ComposedChart data={integrationSummaryByWeek} margin={{ top: 8, right: 24, left: 0, bottom: 48 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="week" tick={{ fontSize: 10 }} angle={-32} textAnchor="end" height={56} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={{ fontSize: 11 }} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar yAxisId="left" dataKey="plannedLift" name="Planned Lift" fill="#0d9488" radius={[3, 3, 0, 0]} barSize={18} />
-                    <Bar yAxisId="left" dataKey="tradeSpend" name="Trade Spend Share" fill="#f59e0b" radius={[3, 3, 0, 0]} barSize={18} />
-                    <Line yAxisId="right" type="monotone" dataKey="cumulativeLift" name="Cumulative Lift" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                <LineChart
+                  chartId="demand-tpm-ibp-integration"
+                  data={integrationSummaryByWeek}
+                  xKey="week"
+                  height={320}
+                  series={[
+                    { field: "plannedLift", label: "Planned Lift", type: "bar", color: "#0d9488" },
+                    { field: "tradeSpend", label: "Trade Spend Share", type: "bar", color: "#f59e0b" },
+                    { field: "cumulativeLift", label: "Cumulative Lift", type: "line", color: "#2563eb", strokeWidth: 2 },
+                  ]}
+                />
               </div>
 
               <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>

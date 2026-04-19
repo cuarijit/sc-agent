@@ -1,0 +1,312 @@
+{
+  "type_key": "demand_sensing_agent",
+  "display_name": "Demand Sensing Agent",
+  "description": "Real-time demand sensing for perishable supply chains. Ingests hourly POS + current on-hand + Ramadan calendar + baseline forecast; detects POS-vs-forecast divergence, short-horizon real-time shortage, event pattern shifts (Ramadan / Iftar), and recommends hour-level re-forecast, intra-day emergency transfer, cold-chain pre-positioning, or production mix shifts.",
+  "status": "active",
+  "available_actions": ["show", "analyse", "diagnose", "solve", "simulate", "export_action_csv"],
+  "handler_hint": "demand_sensing",
+  "assistant_mode": "demand-sensing",
+  "template_version": 2,
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "sensing_horizon_hours": {
+        "type": "number",
+        "title": "Sensing Horizon (hours)",
+        "description": "How many hours ahead the real-time shortage detector projects.",
+        "default": 6,
+        "minimum": 1,
+        "maximum": 48,
+        "x-field": "slider"
+      },
+      "divergence_threshold_pct": {
+        "type": "number",
+        "title": "POS Divergence Threshold (%)",
+        "description": "Minimum POS-vs-baseline deviation (absolute %) that triggers pos_signal_divergence.",
+        "default": 20,
+        "minimum": 5,
+        "maximum": 60
+      },
+      "ramadan_event_lookahead_days": {
+        "type": "number",
+        "title": "Ramadan Event Lookahead (days)",
+        "description": "Days ahead the agent proactively flags event_pattern_shift when a Ramadan day is approaching.",
+        "default": 14,
+        "minimum": 1,
+        "maximum": 45
+      }
+    }
+  },
+  "default_config": {
+    "sensing_horizon_hours": 6,
+    "divergence_threshold_pct": 20,
+    "ramadan_event_lookahead_days": 14,
+    "enabled_intents": ["show", "analyse", "diagnose", "solve", "simulate"],
+    "enabled_library": {
+      "problem_templates": [
+        "short_term_demand_spike",
+        "pos_signal_divergence",
+        "event_pattern_shift",
+        "real_time_shortage_at_current_pos",
+        "cold_chain_prepos_gap"
+      ],
+      "root_cause_templates": [
+        "pos_velocity_surge",
+        "cultural_event_window",
+        "weather_event",
+        "competitor_outage",
+        "upstream_supply_lag_vs_velocity"
+      ],
+      "resolution_families": [
+        "reforecast_short_horizon",
+        "trigger_replen_pull",
+        "cold_chain_pre_position",
+        "shift_production_mix",
+        "intra_day_emergency_transfer"
+      ],
+      "action_templates": [
+        "create_task",
+        "create_recommendation_record",
+        "create_webhook_payload",
+        "export_action_csv"
+      ]
+    },
+    "prioritization_weights": {
+      "revenue_at_risk": 0.25,
+      "stockout_severity": 0.30,
+      "customer_facing_flag": 0.15,
+      "abc_class": 0.10,
+      "velocity_surge_score": 0.20
+    },
+    "llm_policy": {
+      "intent_parse": {"provider": "openai", "model": "gpt-4.1-mini", "temperature": 0, "max_tokens": 400},
+      "followup_interpret": {"provider": "openai", "model": "gpt-4.1-mini", "temperature": 0, "max_tokens": 250},
+      "explanation": {"provider": "openai", "model": "gpt-4.1-mini", "temperature": 0.2, "max_tokens": 900}
+    },
+    "execute_mode": {
+      "dispatch": false,
+      "delivery_mode": "recommendation_record",
+      "webhook_url": null,
+      "csv_path": "/tmp/demand_sensing_actions"
+    },
+    "action_permissions_per_intent": {
+      "show": [],
+      "analyse": [],
+      "diagnose": [],
+      "solve": ["create_recommendation_record", "create_task", "export_action_csv"],
+      "simulate": []
+    },
+    "ui_prompts": {
+      "show": [
+        {"id": "show_pos_hourly", "label": "Hourly POS vs forecast", "text": "What's today's hourly POS vs forecast for LABAN-500ML at STORE-EAST?"},
+        {"id": "show_divergence", "label": "SKUs diverging >20%", "text": "Which SKUs are diverging from forecast by more than 20% this week?"},
+        {"id": "show_next_6h", "label": "Next 6h risk network-wide", "text": "Show current on-hand vs next 6 hours of predicted POS for MILK-FULL-1L network-wide."}
+      ],
+      "analyse": [
+        {"id": "analyse_ramadan", "label": "Ramadan Day trend", "text": "How is Ramadan Day 18 demand trending across laban, yogurt, and juice vs prior year?"},
+        {"id": "analyse_realtime_short", "label": "Real-time shortage", "text": "Where is real-time POS signalling a shortage before end-of-day?"},
+        {"id": "analyse_tomorrow_delivery", "label": "At-risk stores", "text": "Which stores are at risk of stocking out before tomorrow's delivery given current POS velocity?"}
+      ],
+      "solve": [
+        {"id": "solve_ramadan_prepos", "label": "Pre-position for Ramadan", "text": "Ramadan starts in 2 weeks — how should I re-forecast and pre-position dairy?"},
+        {"id": "solve_laban_6h", "label": "Laban East 6h action", "text": "LABAN-500ML at STORE-EAST shows 35% POS divergence — what should I do in the next 6 hours?"},
+        {"id": "solve_cheese_slow", "label": "Cheese shift production", "text": "Cheese at CDC-DAIRY-01 isn't moving — should I shift production mix next week?"}
+      ],
+      "simulate": [
+        {"id": "sim_iftar_spike", "label": "Iftar laban +40%", "text": "If Iftar-hour laban demand spikes 40% at STORE-EAST, what's the shortage risk before the 6 PM delivery?"},
+        {"id": "sim_emergency_transfer", "label": "Emergency transfer 6h", "text": "If I trigger an emergency transfer from STORE-WEST to STORE-EAST for laban, does the 6-hour shortage clear?"},
+        {"id": "sim_ramadan_20over", "label": "Ramadan +20% over forecast", "text": "If Ramadan demand lands 20% above current forecast, where do we break first?"}
+      ]
+    },
+    "capability_overrides": {
+      "force_disable": [],
+      "force_enable": []
+    }
+  },
+  "default_instance": {
+    "icon": "SensorsOutlined",
+    "button_text": "Demand Sensing",
+    "button_style": "icon_and_text",
+    "tooltip_text": "Demand Sensing Agent"
+  },
+  "ui_hints": {
+    "sections": [
+      {"title": "Horizon & thresholds", "fields": ["sensing_horizon_hours", "divergence_threshold_pct", "ramadan_event_lookahead_days"]}
+    ]
+  },
+  "behavior": {
+    "scope_detection": {
+      "db_signal_keywords": [
+        "pos", "hourly", "real-time", "real time", "iftar", "ramadan",
+        "demand", "velocity", "spike", "surge", "divergence", "forecast",
+        "pre-position", "pre position", "cold chain", "production mix",
+        "emergency transfer", "short horizon"
+      ],
+      "out_of_scope_keywords": [
+        "joke", "poem", "story", "weather", "news", "movie", "song", "translate"
+      ],
+      "out_of_scope_response": "I can only help with demand sensing, real-time POS divergence, and event-driven pre-positioning questions."
+    },
+    "intents": [
+      {"id": "show",     "display_name": "Show",     "description": "Read-only listing of sensed signals",
+        "pipeline_stages": ["followup","intent","scope","capability","detect","prioritize","compose","audit"]},
+      {"id": "analyse",  "display_name": "Analyse",  "description": "Show + root-cause evidence",
+        "pipeline_stages": ["followup","intent","scope","capability","detect","prioritize","rca","compose","audit"]},
+      {"id": "diagnose", "display_name": "Diagnose", "description": "Alias for analyse; kept for intent-parser compatibility",
+        "pipeline_stages": ["followup","intent","scope","capability","detect","prioritize","rca","compose","audit"]},
+      {"id": "solve",    "display_name": "Solve",    "description": "Full recommendation: signals + RCs + short-horizon resolutions",
+        "pipeline_stages": ["followup","intent","scope","capability","detect","prioritize","rca","resolve","simulate","map_actions","compose","audit"]},
+      {"id": "simulate", "display_name": "Simulate", "description": "Apply a what-if uplift (Iftar spike, Ramadan +20%)",
+        "pipeline_stages": ["followup","intent","scope","capability","detect","prioritize","rca","resolve","simulate","compose","audit"]}
+    ],
+    "semantic_slots": {
+      "required": ["item_master", "location_master", "opening_inventory", "demand_plan"],
+      "optional": ["pos_hourly", "ramadan_calendar", "actual_demand", "batch_inventory", "sourcing_network"]
+    },
+    "slot_catalog": [
+      {"slot_key": "item_master",      "required_fields": ["sku"], "optional_fields": ["abc_class","unit_price","category"], "unlocks": []},
+      {"slot_key": "location_master",  "required_fields": ["node_id"], "optional_fields": ["node_type"], "unlocks": []},
+      {"slot_key": "opening_inventory","required_fields": ["sku","node_id","on_hand_qty"], "optional_fields": [], "unlocks": ["real_time_shortage_at_current_pos"]},
+      {"slot_key": "demand_plan",      "required_fields": ["sku","node_id","week_start","forecast_qty"], "optional_fields": [], "unlocks": ["pos_signal_divergence","short_term_demand_spike"]},
+      {"slot_key": "pos_hourly",       "required_fields": ["sku","node_id","timestamp_hour","units_sold"], "optional_fields": ["on_hand_snapshot_qty"], "unlocks": ["pos_signal_divergence","real_time_shortage_at_current_pos","pos_velocity_surge","short_term_demand_spike"]},
+      {"slot_key": "ramadan_calendar", "required_fields": ["calendar_date"], "optional_fields": ["ramadan_day","iftar_local_time"], "unlocks": ["event_pattern_shift","cultural_event_window","cold_chain_prepos_gap"]},
+      {"slot_key": "actual_demand",    "required_fields": ["sku","node_id","week_start","actual_qty"], "optional_fields": [], "unlocks": ["pos_signal_divergence"]},
+      {"slot_key": "batch_inventory",  "required_fields": ["sku","node_id","batch_id","batch_qty","expiry_date"], "optional_fields": [], "unlocks": ["cold_chain_prepos_gap"]},
+      {"slot_key": "sourcing_network", "required_fields": ["sku","dest_node_id","source_node_id"], "optional_fields": [], "unlocks": ["intra_day_emergency_transfer","trigger_replen_pull"]}
+    ],
+    "library": {
+      "problem_templates": [
+        {"key": "short_term_demand_spike", "display_name": "Short-Term Demand Spike",
+          "requires_slots": ["pos_hourly","demand_plan"],
+          "rule": {"type": "pos_recent_vs_baseline_pct", "window_hours": 24, "threshold_pct": 25},
+          "severity": {"critical_if_pct_ge": 40, "warning_if_pct_ge": 25, "default": "warning"},
+          "aggregation": "per_sku_per_store"},
+        {"key": "pos_signal_divergence", "display_name": "POS Signal Divergence",
+          "requires_slots": ["pos_hourly","demand_plan"],
+          "rule": {"type": "pos_rolling_vs_forecast_pct", "window_hours": 72, "threshold_pct": 20},
+          "severity": {"critical_if_pct_ge": 30, "warning_if_pct_ge": 20, "default": "warning"},
+          "aggregation": "per_sku_per_store"},
+        {"key": "event_pattern_shift", "display_name": "Event Pattern Shift (Ramadan / Iftar)",
+          "requires_slots": ["ramadan_calendar","demand_plan"],
+          "rule": {"type": "ramadan_day_within_lookahead", "lookahead_days": 14},
+          "severity": {"default": "warning"},
+          "aggregation": "per_sku"},
+        {"key": "real_time_shortage_at_current_pos", "display_name": "Real-Time Shortage (next N hours)",
+          "requires_slots": ["pos_hourly","opening_inventory"],
+          "rule": {"type": "projected_hourly_on_hand_below_zero", "horizon_hours": 6},
+          "severity": {"critical_if_hour_le": 2, "warning_if_hour_le": 6, "default": "warning"},
+          "aggregation": "first_breach_hour_per_sku_location"},
+        {"key": "cold_chain_prepos_gap", "display_name": "Cold-Chain Pre-position Gap",
+          "requires_slots": ["ramadan_calendar","opening_inventory","batch_inventory"],
+          "rule": {"type": "event_prepositioning_shortfall", "lookahead_days": 7},
+          "severity": {"default": "warning"},
+          "aggregation": "per_sku"}
+      ],
+      "root_cause_templates": [
+        {"key": "pos_velocity_surge", "display_name": "POS Velocity Surge",
+          "requires_slots": ["pos_hourly"],
+          "evidence_query": "rolling_pos_vs_trailing_mean",
+          "weight": 0.35},
+        {"key": "cultural_event_window", "display_name": "Cultural Event (Ramadan) Window",
+          "requires_slots": ["ramadan_calendar"],
+          "evidence_query": "ramadan_day_active_or_approaching",
+          "weight": 0.30},
+        {"key": "weather_event", "display_name": "Weather Event (stub)",
+          "requires_slots": [],
+          "evidence_query": "weather_event_signal_present",
+          "weight": 0.15},
+        {"key": "competitor_outage", "display_name": "Competitor Outage (stub)",
+          "requires_slots": [],
+          "evidence_query": "competitor_outage_signal_present",
+          "weight": 0.10},
+        {"key": "upstream_supply_lag_vs_velocity", "display_name": "Upstream Supply Lag vs Velocity",
+          "requires_slots": ["opening_inventory","pos_hourly"],
+          "evidence_query": "on_hand_cover_hours_below_next_delivery",
+          "weight": 0.30}
+      ],
+      "resolution_families": [
+        {"key": "reforecast_short_horizon", "display_name": "Re-forecast (short horizon)",
+          "requires_slots": ["pos_hourly","demand_plan"],
+          "enumeration_rule": "apply_rolling_pos_uplift_to_short_horizon_forecast",
+          "default_qty_rule": "pos_uplift_qty",
+          "direction": "demand_shaping"},
+        {"key": "trigger_replen_pull", "display_name": "Trigger Replenishment Pull",
+          "requires_slots": ["sourcing_network"],
+          "enumeration_rule": "request_pull_from_primary_source",
+          "default_qty_rule": "projected_shortfall_qty",
+          "direction": "inbound"},
+        {"key": "cold_chain_pre_position", "display_name": "Cold-Chain Pre-Position",
+          "requires_slots": ["ramadan_calendar","opening_inventory"],
+          "enumeration_rule": "stage_product_mix_upstream_before_event",
+          "default_qty_rule": "event_uplift_qty",
+          "direction": "inbound"},
+        {"key": "shift_production_mix", "display_name": "Shift Production Mix",
+          "requires_slots": ["pos_hourly","demand_plan"],
+          "enumeration_rule": "rebalance_production_toward_surging_skus",
+          "default_qty_rule": "surge_qty_delta",
+          "direction": "upstream"},
+        {"key": "intra_day_emergency_transfer", "display_name": "Intra-Day Emergency Transfer",
+          "requires_slots": ["pos_hourly","opening_inventory","sourcing_network"],
+          "enumeration_rule": "pick_sibling_with_surplus_for_hour_level_transfer",
+          "default_qty_rule": "hourly_shortfall_qty",
+          "direction": "lateral"}
+      ],
+      "action_templates": {
+        "create_task": {"delivery_mode": "task", "target_system": "servicenow"},
+        "create_recommendation_record": {"delivery_mode": "recommendation_record", "target_system": "db.recommendations"},
+        "create_webhook_payload": {"delivery_mode": "webhook", "schema_ref": "schemas/demand_sensing_webhook.v1.json"},
+        "export_action_csv": {"delivery_mode": "csv", "columns": ["run_id","sku","node_id","family_key","qty","hours_until_breach","ramadan_day"]}
+      }
+    },
+    "decision_graph": [
+      {"from_problem": "short_term_demand_spike",
+        "compatible_root_causes": ["pos_velocity_surge","cultural_event_window","weather_event","competitor_outage"],
+        "compatible_resolutions": ["reforecast_short_horizon","trigger_replen_pull","intra_day_emergency_transfer","shift_production_mix"],
+        "default_rank": ["intra_day_emergency_transfer","reforecast_short_horizon","trigger_replen_pull","shift_production_mix"]},
+      {"from_problem": "pos_signal_divergence",
+        "compatible_root_causes": ["pos_velocity_surge","cultural_event_window","weather_event"],
+        "compatible_resolutions": ["reforecast_short_horizon","shift_production_mix","trigger_replen_pull"],
+        "default_rank": ["reforecast_short_horizon","trigger_replen_pull","shift_production_mix"]},
+      {"from_problem": "event_pattern_shift",
+        "compatible_root_causes": ["cultural_event_window"],
+        "compatible_resolutions": ["cold_chain_pre_position","reforecast_short_horizon","shift_production_mix"],
+        "default_rank": ["cold_chain_pre_position","reforecast_short_horizon","shift_production_mix"]},
+      {"from_problem": "real_time_shortage_at_current_pos",
+        "compatible_root_causes": ["pos_velocity_surge","upstream_supply_lag_vs_velocity","cultural_event_window"],
+        "compatible_resolutions": ["intra_day_emergency_transfer","trigger_replen_pull","reforecast_short_horizon"],
+        "default_rank": ["intra_day_emergency_transfer","trigger_replen_pull","reforecast_short_horizon"]},
+      {"from_problem": "cold_chain_prepos_gap",
+        "compatible_root_causes": ["cultural_event_window","upstream_supply_lag_vs_velocity"],
+        "compatible_resolutions": ["cold_chain_pre_position","trigger_replen_pull"],
+        "default_rank": ["cold_chain_pre_position","trigger_replen_pull"]}
+    ],
+    "llm_call_sites": {
+      "intent_parse": {
+        "provider_default": "openai",
+        "model_default": "gpt-4.1-mini",
+        "temperature": 0.0,
+        "max_tokens": 400,
+        "system_prompt": "You are the intent parser for a demand sensing agent. Given a planner's question, return STRICT JSON with keys intent_mode (show|analyse|diagnose|solve|simulate|clarify|out_of_scope), scope (object with optional skus[], nodes[], time_window (e.g. {start_hour, end_hour}), ramadan_day_filter (int), simulation_delta{}), focus (short string), confidence (0..1). Respond with ONLY JSON."
+      },
+      "followup_interpret": {
+        "provider_default": "openai",
+        "model_default": "gpt-4.1-mini",
+        "temperature": 0.0,
+        "max_tokens": 250,
+        "system_prompt": "You refine a prior turn's scope for a demand sensing agent. Return STRICT JSON with keys: skus[], nodes[], inherit_time_window (bool), hour_offsets_prior[]. Respond with ONLY JSON."
+      },
+      "explanation": {
+        "provider_default": "openai",
+        "model_default": "gpt-4.1-mini",
+        "temperature": 0.2,
+        "max_tokens": 900,
+        "system_prompt": "You are a senior demand planner explaining real-time demand sensing results. Open with a 1-2 sentence headline. Name the top 1-3 SKU/store pairs with specific POS vs forecast deltas and hours-until-shortage. Explain the leading root cause plainly (POS surge, Ramadan, upstream lag). Recommend the top 1-2 resolutions with specific qtys and sources. Close with a concrete next step. Never invent numbers. Max ~250 words."
+      }
+    },
+    "response_schema": {
+      "structured_keys": ["run_id","intent_mode","scope","problems","root_causes","resolutions","action_plan","capabilities_applied","warnings"],
+      "narrative_max_chars": 1800,
+      "always_include_audit_ref": true
+    }
+  }
+}

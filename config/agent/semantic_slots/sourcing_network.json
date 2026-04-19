@@ -1,0 +1,9 @@
+{
+  "slot_key": "sourcing_network",
+  "display_name": "Sourcing Network",
+  "description": "SKU-specific sourcing graph: which upstream nodes supply which demand nodes, with lane transit and cost. Used by resolution_generator to enumerate transfer and reroute candidates.",
+  "is_required": true,
+  "required_fields": ["sku", "dest_node_id", "source_node_id"],
+  "optional_fields": ["mode", "lead_time_days", "lane_cost_per_unit", "lane_status", "is_primary"],
+  "grain_hint": "sku_location"
+}

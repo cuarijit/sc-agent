@@ -1,0 +1,13 @@
+{
+  "slot_key": "actual_demand",
+  "display_name": "Actual Demand",
+  "description": "Historical actual demand per sku_location_week. Feeds forecast_overstated and substitution_cannibalization root causes.",
+  "is_required": false,
+  "required_fields": ["sku", "node_id", "week_start", "actual_qty"],
+  "optional_fields": [],
+  "grain_hint": "sku_location_week",
+  "derivation_hint": {
+    "available_source": "network_actual_weekly",
+    "notes": "Already-modelled MEIO table; map directly."
+  }
+}

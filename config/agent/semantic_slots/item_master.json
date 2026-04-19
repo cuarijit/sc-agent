@@ -1,0 +1,9 @@
+{
+  "slot_key": "item_master",
+  "display_name": "Item Master",
+  "description": "SKU-level reference data used for scope resolution and prioritization (ABC class, category, customer-facing flag).",
+  "is_required": true,
+  "required_fields": ["sku"],
+  "optional_fields": ["name", "brand", "category", "abc_class", "primary_supplier", "unit_price", "margin_pct"],
+  "grain_hint": "sku"
+}

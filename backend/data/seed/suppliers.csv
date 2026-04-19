@@ -7,3 +7,11 @@ MORNINGMILL,MorningMill,Mountain,CIF,0.89,16,Bulk cereal supplier used in excess
 HYDRACO,HydraCo,Southeast,FOB Destination,0.62,21,Critical hydration supplier with long lead time and disruption exposure.
 PACIFIC-COPACK,Pacific Co-Pack,West,EXW,0.91,11,Alternate co-pack vendor for regional snack recovery scenarios.
 NORTHPEAK,NorthPeak Co-Man,Midwest,FOB Origin,0.88,13,Alternate supplier used when transfer is less feasible than external sourcing.
+DAIRY-FRESH,DairyFresh Co-Op,Midwest,FOB Destination,0.97,2,Refrigerated dairy supplier with daily delivery cadence and very short lead time.
+YOGUR-CO,Greek Style Yogurt Co,Northeast,DDP,0.94,3,Branded yogurt supplier with weekly delivery slots and chilled distribution.
+FARM-DIRECT,Farm Direct Eggs,South,FOB Origin,0.91,2,Egg supplier with daily harvest and cold-chain distribution to regional DCs.
+OFFICEMAX-CO,OfficeMax Wholesale,Midwest,CIF,0.93,7,Stationery wholesaler with weekly truckload deliveries and broad SKU coverage.
+SONY-DIST,Sony Interactive Distribution,West,CIF,0.85,14,Authorized console distributor with allocation constraints during launch windows.
+MS-DIST,Microsoft Gaming Distribution,West,CIF,0.86,14,Authorized Xbox distributor with quarterly allocation and bundle pricing.
+LOGI-DIST,Logitech Distribution,West,FOB Origin,0.92,10,Peripheral distributor with reliable cadence for keyboards, headsets, and controllers.
+NINT-DIST,Nintendo Authorized Wholesale,West,DDP,0.83,21,Console and software supplier with longer lead time and tight launch allocation.

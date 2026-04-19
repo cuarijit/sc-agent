@@ -8,8 +8,7 @@ import { type GridColDef } from "@mui/x-data-grid";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-
+import { BarChart, LineChart } from "../charts";
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
@@ -328,24 +327,18 @@ export default function DemandFinancialPage() {
                 Revenue vs COGS by month
               </Typography>
               <div className="chart-shell" style={{ minHeight: 340 }}>
-                <ResponsiveContainer width="100%" height={360}>
-                  <ComposedChart data={revenueCogsByMonth} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} unit="%" />
-                    <Tooltip
-                      formatter={(v: number, name: string) =>
-                        name === "Margin %" ? `${Number(v).toFixed(1)}%` : fmtMoney(Number(v))
-                      }
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar yAxisId="left" dataKey="revenue" name="Revenue" fill="#2563eb" radius={[3, 3, 0, 0]} barSize={18} />
-                    <Bar yAxisId="left" dataKey="cogs" name="COGS" fill="#dc2626" radius={[3, 3, 0, 0]} barSize={18} />
-                    <Line yAxisId="left" type="monotone" dataKey="grossMargin" name="Gross Margin" stroke="#16a34a" strokeWidth={2} dot={false} />
-                    <Line yAxisId="right" type="monotone" dataKey="marginPct" name="Margin %" stroke="#16a34a" strokeWidth={2} strokeDasharray="6 3" dot={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                <LineChart
+                  chartId="demand-financial-pl-monthly"
+                  data={revenueCogsByMonth}
+                  xKey="month"
+                  height={360}
+                  series={[
+                    { field: "revenue", label: "Revenue", type: "bar", color: "#2563eb" },
+                    { field: "cogs", label: "COGS", type: "bar", color: "#dc2626" },
+                    { field: "grossMargin", label: "Gross Margin", type: "line", color: "#16a34a", strokeWidth: 2, showDot: false },
+                    { field: "marginPct", label: "Margin %", type: "line", color: "#16a34a", strokeWidth: 2, strokeDasharray: "dashed", showDot: false },
+                  ]}
+                />
               </div>
 
               <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
@@ -432,16 +425,13 @@ export default function DemandFinancialPage() {
                 Revenue by SKU
               </Typography>
               <div className="chart-shell" style={{ minHeight: 300 }}>
-                <ResponsiveContainer width="100%" height={320}>
-                  <BarChart data={revenueBySku} margin={{ top: 8, right: 16, left: 0, bottom: 56 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="sku" tick={{ fontSize: 10 }} interval={0} angle={-28} textAnchor="end" height={64} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip formatter={(v: number) => fmtMoney(Number(v))} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="revenue" name="Revenue" fill="#2679A8" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <BarChart
+                  chartId="demand-financial-revenue-by-sku"
+                  data={revenueBySku}
+                  xKey="sku"
+                  height={320}
+                  series={[{ field: "revenue", label: "Revenue", color: "#2679A8" }]}
+                />
               </div>
               <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
                 SKU summary
@@ -474,23 +464,17 @@ export default function DemandFinancialPage() {
                 Bars compare forecast and actual revenue by month; dashed line shows variance.
               </Typography>
               <div className="chart-shell" style={{ minHeight: 320 }}>
-                <ResponsiveContainer width="100%" height={340}>
-                  <ComposedChart data={forecastVsActualByMonth} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      formatter={(v: number, name: string) =>
-                        name === "Variance %" ? `${Number(v).toFixed(1)}%` : fmtMoney(Number(v))
-                      }
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar yAxisId="left" dataKey="forecast" name="Forecast Revenue" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                    <Bar yAxisId="left" dataKey="actual" name="Actual Revenue" fill="#16a34a" radius={[4, 4, 0, 0]} />
-                    <Line yAxisId="right" type="monotone" dataKey="variance" name="Variance" stroke="#dc2626" strokeWidth={2} strokeDasharray="6 3" dot={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                <LineChart
+                  chartId="demand-financial-forecast-vs-actual"
+                  data={forecastVsActualByMonth}
+                  xKey="month"
+                  height={340}
+                  series={[
+                    { field: "forecast", label: "Forecast Revenue", type: "bar", color: "#2563eb" },
+                    { field: "actual", label: "Actual Revenue", type: "bar", color: "#16a34a" },
+                    { field: "variance", label: "Variance", type: "line", color: "#dc2626", strokeWidth: 2, strokeDasharray: "dashed", showDot: false },
+                  ]}
+                />
               </div>
 
               <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>

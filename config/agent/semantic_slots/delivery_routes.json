@@ -1,0 +1,9 @@
+{
+  "slot_key": "delivery_routes",
+  "display_name": "Delivery Routes",
+  "description": "Scheduled delivery routes with vehicle, departure time, Iftar window end, and ordered stops JSON (each stop: node_id, planned ETA, planned qty per SKU). Drives route_delivery_risk, iftar_window_miss_risk, reroute_delivery, swap_vehicle_capacity.",
+  "is_required": false,
+  "required_fields": ["route_id", "scheduled_date", "stops_json", "departure_time"],
+  "optional_fields": ["capacity_units", "window_end_time", "vehicle_id", "origin_node_id", "status"],
+  "grain_hint": "route_day"
+}

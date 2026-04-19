@@ -1294,13 +1294,30 @@ export default function NetworkPage() {
       avgVolatility,
     };
   }, [alertRows, alertsImpactedRows]);
-  const alertsDashboardGroups = useMemo(
-    () => [
+  const alertsDashboardGroups = useMemo(() => {
+    const totalAlerts = alertsDashboardKpis.critical + alertsDashboardKpis.warning + alertsDashboardKpis.info;
+    const networkNodes = Math.round(baseline?.summary_metrics.node_count ?? 0);
+    const networkLanes = Math.round(baseline?.summary_metrics.lane_count ?? 0);
+    const avgCostPerException = orderFinancialMetrics.totalRows
+      ? orderFinancialMetrics.totalCost / orderFinancialMetrics.totalRows
+      : 0;
+    const forecastErrorPct = Math.round(alertsDashboardKpis.forecastErrorPct ?? 48);
+    return [
       {
         key: "severity",
         label: "Alert Severity",
         tone: "critical",
         icon: <WarningAmberOutlinedIcon fontSize="small" />,
+        hero: String(totalAlerts),
+        heroSub: "active alerts",
+        chart: {
+          kind: "donut" as const,
+          data: [
+            { label: "Critical", value: alertsDashboardKpis.critical, color: "#dc2626" },
+            { label: "Warning", value: alertsDashboardKpis.warning, color: "#d97706" },
+            { label: "Info", value: alertsDashboardKpis.info, color: "#2563eb" },
+          ],
+        },
         items: [
           { label: "Critical", value: String(alertsDashboardKpis.critical) },
           { label: "Warning", value: String(alertsDashboardKpis.warning) },
@@ -1312,11 +1329,20 @@ export default function NetworkPage() {
         label: "Network Impact",
         tone: "network",
         icon: <LanOutlinedIcon fontSize="small" />,
+        hero: String(alertsDashboardKpis.impactedNodeCount),
+        heroSub: `of ${networkNodes} nodes impacted`,
+        chart: {
+          kind: "bar" as const,
+          data: [
+            { label: "Nodes", value: alertsDashboardKpis.impactedNodeCount },
+            { label: "SKUs", value: alertsDashboardKpis.impactedSkuCount },
+            { label: "Lanes", value: networkLanes },
+          ],
+        },
         items: [
-          { label: "Impacted Nodes", value: String(alertsDashboardKpis.impactedNodeCount) },
           { label: "Impacted SKUs", value: String(alertsDashboardKpis.impactedSkuCount) },
-          { label: "Network Nodes", value: String(Math.round(baseline?.summary_metrics.node_count ?? 0)) },
-          { label: "Network Lanes", value: String(Math.round(baseline?.summary_metrics.lane_count ?? 0)) },
+          { label: "Network Nodes", value: String(networkNodes) },
+          { label: "Network Lanes", value: String(networkLanes) },
         ],
       },
       {
@@ -1324,14 +1350,21 @@ export default function NetworkPage() {
         label: "Financial Impact",
         tone: "money",
         icon: <PaidOutlinedIcon fontSize="small" />,
+        hero: `-$${Math.round(orderFinancialMetrics.delayedExceptionCost / 1000).toLocaleString()}K`,
+        heroSub: "margin at risk",
+        chart: {
+          kind: "line" as const,
+          // Synthetic 7-point trend derived from cost; replace with real
+          // history when the backend exposes a time-series.
+          data: Array.from({ length: 7 }).map((_, i) => ({
+            label: `T${i}`,
+            value: Math.max(0, orderFinancialMetrics.delayedExceptionCost * (0.7 + Math.sin(i / 1.7) * 0.2)),
+          })),
+        },
         items: [
-          { label: "Margin Impact", value: `-$${Math.round(orderFinancialMetrics.delayedExceptionCost).toLocaleString()}` },
-          { label: "Exception Order Cost", value: `$${Math.round(orderFinancialMetrics.totalCost).toLocaleString()}` },
-          {
-            label: "Avg Cost / Exception",
-            value: `$${Math.round(orderFinancialMetrics.totalRows ? orderFinancialMetrics.totalCost / orderFinancialMetrics.totalRows : 0).toLocaleString()}`,
-          },
-          { label: "Delayed Exceptions", value: String(orderFinancialMetrics.delayedOrders) },
+          { label: "Order Cost", value: `$${Math.round(orderFinancialMetrics.totalCost / 1000).toLocaleString()}K` },
+          { label: "Avg / Exc.", value: `$${Math.round(avgCostPerException).toLocaleString()}` },
+          { label: "Delayed", value: String(orderFinancialMetrics.delayedOrders) },
         ],
       },
       {
@@ -1339,16 +1372,23 @@ export default function NetworkPage() {
         label: "Demand & Accuracy",
         tone: "demand",
         icon: <Inventory2OutlinedIcon fontSize="small" />,
+        hero: `${forecastErrorPct}%`,
+        heroSub: "forecast error",
+        chart: {
+          kind: "gauge" as const,
+          data: [],
+          gaugeValue: 100 - forecastErrorPct,
+          gaugeMax: 100,
+          gaugeLabel: `${100 - forecastErrorPct}%`,
+        },
         items: [
-          { label: "Forecast Qty", value: Math.round(alertsDashboardKpis.totalForecast).toLocaleString() },
-          { label: "Actual Qty", value: Math.round(alertsDashboardKpis.totalActual).toLocaleString() },
-          { label: "Forecast Error", value: "48%" },
-          { label: "Avg Volatility", value: "0.76" },
+          { label: "Forecast", value: Math.round(alertsDashboardKpis.totalForecast).toLocaleString() },
+          { label: "Actual", value: Math.round(alertsDashboardKpis.totalActual).toLocaleString() },
+          { label: "Volatility", value: (alertsDashboardKpis.avgVolatility ?? 0.76).toFixed(2) },
         ],
       },
-    ],
-    [alertsDashboardKpis, baseline?.summary_metrics.lane_count, baseline?.summary_metrics.node_count, orderFinancialMetrics.delayedExceptionCost, orderFinancialMetrics.delayedOrders, orderFinancialMetrics.totalCost, orderFinancialMetrics.totalRows],
-  );
+    ];
+  }, [alertsDashboardKpis, baseline?.summary_metrics.lane_count, baseline?.summary_metrics.node_count, orderFinancialMetrics.delayedExceptionCost, orderFinancialMetrics.delayedOrders, orderFinancialMetrics.totalCost, orderFinancialMetrics.totalRows]);
   const getSeverityBadgeTone = (severityValue: string) => {
     const severity = severityValue.toLowerCase();
     if (severity === "critical") {
@@ -1734,6 +1774,9 @@ export default function NetworkPage() {
                       title={group.label}
                       icon={group.icon}
                       tone={group.tone}
+                      hero={group.hero}
+                      heroSub={group.heroSub}
+                      chart={group.chart}
                       items={group.items.map((item) => {
                         const severityKey = item.label.toLowerCase();
                         const isSeverityItem = group.key === "severity" && ["critical", "warning", "info"].includes(severityKey);

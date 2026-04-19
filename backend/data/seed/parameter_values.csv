@@ -3,3 +3,14 @@ CHOC-001,DC-ATL,service_level,Target Service Level,GLOBAL > Seasonal > DC-ATL,95
 CHOC-001,DC-ATL,safety_stock_qty,Safety Stock,GLOBAL > Seasonal > DC-ATL > CHOC-001,210,210,manual_override,Override applied after volatility increase in the last 8 weeks.
 BAR-002,DC-CHI,lead_time_days,External Lead Time,GLOBAL > Core > Midwest,9,,default,Inherited from Midwest core supplier rule.
 BAR-002,DC-CHI,reorder_point_qty,Reorder Point,GLOBAL > Core > DC-CHI > BAR-002,155,155,agent_recommendation,Previously approved recommendation based on forecast error uplift.
+MILK-001,STORE-DEN,service_level,Target Service Level,GLOBAL > Perishable-Dairy > STORE-DEN,99%,,default,Perishable policy: dairy aisle requires near-zero stockout window.
+MILK-001,STORE-DEN,safety_stock_qty,Safety Stock,GLOBAL > Perishable-Dairy > STORE-DEN > MILK-001,80,80,manual_override,Tightened safety stock to two-day cover after recent shelf gaps.
+CHEESE-002,DC-ATL,lead_time_days,External Lead Time,GLOBAL > Perishable-Dairy > Southeast,2,,default,Daily refrigerated delivery from regional dairy co-op.
+BUTTER-003,DC-CHI,service_level,Target Service Level,GLOBAL > Perishable-Dairy > Midwest,98%,,default,Perishable dairy policy with shelf-life-driven SL target.
+EGGS-005,DC-NJ,reorder_point_qty,Reorder Point,GLOBAL > Perishable > DC-NJ > EGGS-005,320,320,agent_recommendation,Lifted reorder point following avian-flu disruption signal.
+PEN-101,DC-CHI,service_level,Target Service Level,GLOBAL > Stationery > Midwest,90%,,default,Stationery class accepts wider tolerance vs. perishable.
+NB-102,DC-CHI,lead_time_days,External Lead Time,GLOBAL > Stationery > Midwest,7,,default,Standard wholesale lead time for stationery shipments.
+PS5-201,DC-LAX,service_level,Target Service Level,GLOBAL > Gaming > West,95%,,default,Premium gaming SKU with high revenue weight.
+PS5-201,DC-LAX,lead_time_days,External Lead Time,GLOBAL > Gaming > West > PS5-201,14,14,manual_override,Distributor allocation lead time during holiday window.
+XBOX-202,DC-NJ,reorder_point_qty,Reorder Point,GLOBAL > Gaming > DC-NJ > XBOX-202,60,60,agent_recommendation,Rebalance recommendation reduced reorder point during surplus phase.
+SWITCH-205,DC-DAL,service_level,Target Service Level,GLOBAL > Gaming > South,95%,,default,Family-console SKU with steady-but-rationed allocation.

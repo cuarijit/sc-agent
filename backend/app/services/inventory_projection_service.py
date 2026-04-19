@@ -3,17 +3,21 @@ from __future__ import annotations
 import math
 from datetime import date, datetime, timedelta
 from statistics import NormalDist
+from typing import Any
 
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from ..models import (
+    InventoryBatchSnapshot,
     InventoryProjectionProductConfig,
     NetworkForecastWeekly,
     NetworkInventorySnapshot,
     NetworkSourcingRule,
     ParameterValue,
+    PosHourlyActual,
     ProductMaster,
+    RamadanCalendar,
     ReplenishmentOrder,
     ReplenishmentOrderAlertLink,
     ReplenishmentOrderDetail,
@@ -286,6 +290,142 @@ class InventoryProjectionService:
                 best_qty = float(row.on_hand_qty)
         return best_qty if best_qty is not None else 0.0
 
+    def _batches_for(self, sku: str, node: str | None, base_week: date) -> list[dict[str, Any]]:
+        """Return all batches for sku/node as of the latest snapshot on-or-before base_week.
+
+        Each batch row is returned as a plain dict with parsed expiry/received dates
+        and a derived ``rsl_days`` (remaining shelf life vs base_week).
+        """
+        query = self.db.query(InventoryBatchSnapshot).filter(InventoryBatchSnapshot.sku == sku)
+        if node:
+            query = query.filter(InventoryBatchSnapshot.node_id == node)
+        rows = query.all()
+        if not rows:
+            return []
+        # Pick the most-recent as_of_date <= base_week (per-sku/node).
+        by_pair: dict[tuple[str, str], list[InventoryBatchSnapshot]] = {}
+        for row in rows:
+            try:
+                as_of = date.fromisoformat(row.as_of_date)
+            except (TypeError, ValueError):
+                continue
+            if as_of > base_week:
+                continue
+            by_pair.setdefault((row.sku, row.node_id), []).append(row)
+        # For each (sku,node) pair, keep the rows belonging to the max as_of_date.
+        selected: list[InventoryBatchSnapshot] = []
+        for pair_rows in by_pair.values():
+            latest = max(pair_rows, key=lambda r: r.as_of_date)
+            for r in pair_rows:
+                if r.as_of_date == latest.as_of_date:
+                    selected.append(r)
+        out: list[dict[str, Any]] = []
+        for r in selected:
+            try:
+                exp = date.fromisoformat(r.expiry_date)
+            except (TypeError, ValueError):
+                continue
+            try:
+                received = date.fromisoformat(r.received_date) if r.received_date else None
+            except (TypeError, ValueError):
+                received = None
+            out.append({
+                "batch_id": r.batch_id,
+                "sku": r.sku,
+                "node_id": r.node_id,
+                "batch_qty": float(r.batch_qty or 0.0),
+                "expiry_date": exp,
+                "received_date": received,
+                "quality_hold_flag": bool(r.quality_hold_flag),
+                "rsl_days": (exp - base_week).days,
+            })
+        # Sort by expiry ascending so "oldest first" consumption is natural.
+        out.sort(key=lambda b: b["expiry_date"])
+        return out
+
+    def _sellable_on_hand(
+        self,
+        batches: list[dict[str, Any]],
+        as_of_date: date,
+    ) -> float:
+        """Sum batch_qty for batches with expiry strictly after as_of_date and no quality hold."""
+        total = 0.0
+        for b in batches:
+            if b["quality_hold_flag"]:
+                continue
+            if b["expiry_date"] > as_of_date:
+                total += b["batch_qty"]
+        return total
+
+    def _consume_batches_fefo(
+        self,
+        remaining_batches: list[dict[str, Any]],
+        consume_qty: float,
+        inbound_qty: float,
+        week_start: date,
+        week_end: date,
+    ) -> tuple[list[dict[str, Any]], float, float]:
+        """Apply a week of demand to the batch pool using First-Expire-First-Out.
+
+        Returns ``(remaining_batches, expired_qty_this_week, sellable_ending)``.
+        Batches expiring on-or-before ``week_end`` that are NOT consumed during
+        the week are written off as ``expired_qty``. Inbound supply is treated
+        as a fresh batch with expiry 30 days after the week (the product's
+        shelf_life_days gates this more precisely in practice; we use a safe
+        default so generic non-perishable flows keep working).
+        """
+        # 1) Add inbound as a single fresh batch (if any).
+        if inbound_qty > 0:
+            remaining_batches = list(remaining_batches) + [{
+                "batch_id": f"INBOUND-{week_start.isoformat()}",
+                "sku": remaining_batches[0]["sku"] if remaining_batches else None,
+                "node_id": remaining_batches[0]["node_id"] if remaining_batches else None,
+                "batch_qty": float(inbound_qty),
+                "expiry_date": week_end + timedelta(days=30),
+                "received_date": week_start,
+                "quality_hold_flag": False,
+                "rsl_days": 30 + (week_end - week_start).days,
+            }]
+            remaining_batches.sort(key=lambda b: b["expiry_date"])
+
+        # 2) Consume in FEFO order across the week, skipping already-expired
+        # and quality-held batches (quality holds are not sellable).
+        to_consume = max(0.0, float(consume_qty))
+        updated: list[dict[str, Any]] = []
+        for b in remaining_batches:
+            if b["batch_qty"] <= 0:
+                continue
+            # Quality-held batches are never consumed — kept in pool untouched.
+            if b.get("quality_hold_flag"):
+                updated.append(b)
+                continue
+            # A batch expiring on-or-before week_start is already unusable when
+            # demand starts accruing — treat as pre-waste (handled below).
+            if b["expiry_date"] <= week_start:
+                updated.append(b)
+                continue
+            if to_consume <= 0:
+                updated.append(b)
+                continue
+            take = min(to_consume, b["batch_qty"])
+            new_qty = b["batch_qty"] - take
+            to_consume -= take
+            if new_qty > 0:
+                nb = dict(b)
+                nb["batch_qty"] = new_qty
+                updated.append(nb)
+        # 3) Compute expired qty = any remaining batch whose expiry falls in
+        # (week_start, week_end] or before. Drop them from the pool.
+        expired_qty = 0.0
+        kept: list[dict[str, Any]] = []
+        for b in updated:
+            if b["expiry_date"] <= week_end:
+                expired_qty += b["batch_qty"]
+            else:
+                kept.append(b)
+        sellable_ending = sum(b["batch_qty"] for b in kept if not b["quality_hold_flag"])
+        return kept, round(expired_qty, 2), round(sellable_ending, 2)
+
     def _parameter_float(self, sku: str, node: str | None, code: str) -> float | None:
         if not node:
             return None
@@ -345,6 +485,9 @@ class InventoryProjectionService:
             order_exception_ids_map,
         ) = self._orders_map(sku, node, base_week)
         opening_stock = self._opening_stock(sku, node, base_week)
+        batches = self._batches_for(sku, node, base_week)
+        batch_mode = bool(batches)
+        opening_sellable = self._sellable_on_hand(batches, base_week) if batch_mode else opening_stock
 
         demand_values = [value for value in forecast_map.values() if value > 0]
         avg_weekly_demand = sum(demand_values) / len(demand_values) if demand_values else 100.0
@@ -371,6 +514,18 @@ class InventoryProjectionService:
         rows: list[dict[str, object]] = []
         running_planned = opening_stock
         running_actual = opening_stock
+        running_sellable = opening_sellable
+        running_batches = list(batches) if batch_mode else []
+        total_expired = 0.0
+        # Earliest RSL across ALL base-week batches (regardless of quality hold)
+        # — used by the expiring_batch_risk detector so a fresh batch consumed
+        # in week 1 doesn't hide the fact that we had RSL=1 stock on-hand today.
+        base_earliest_rsl_days: int | None = None
+        base_earliest_expiry_date: str | None = None
+        if batch_mode and batches:
+            first_base = batches[0]
+            base_earliest_rsl_days = first_base["rsl_days"]
+            base_earliest_expiry_date = first_base["expiry_date"].isoformat()
         for week_offset in range(1, 13):
             forecast = float(forecast_map.get(week_offset, 0.0))
             orders = float(orders_map.get(week_offset, 0.0))
@@ -395,11 +550,35 @@ class InventoryProjectionService:
 
             projected_planned = round(running_planned - forecast + orders, 2)
             projected_actual = round(running_actual - forecast + orders_non_exception, 2)
+
+            # Shelf-life-aware projection (batch-grain, FEFO consumption).
+            week_start = date.fromisoformat(self._iso_week(base_week, week_offset))
+            week_end = week_start + timedelta(days=6)
+            expired_qty_week = 0.0
+            sellable_ending = projected_actual
+            if batch_mode:
+                running_batches, expired_qty_week, sellable_ending = self._consume_batches_fefo(
+                    running_batches,
+                    consume_qty=max(0.0, forecast),
+                    inbound_qty=max(0.0, orders_non_exception),
+                    week_start=week_start,
+                    week_end=week_end,
+                )
+                total_expired += expired_qty_week
+
+            earliest_exp: str | None = None
+            batch_rsl_min: int | None = None
+            if batch_mode and running_batches:
+                first = running_batches[0]
+                earliest_exp = first["expiry_date"].isoformat()
+                batch_rsl_min = max(0, (first["expiry_date"] - week_start).days)
+
             rows.append(
                 {
                     "week_offset": week_offset,
-                    "week_start_date": self._iso_week(base_week, week_offset),
+                    "week_start_date": week_start.isoformat(),
                     "current_on_hand_qty": opening_stock if week_offset == 1 else None,
+                    "current_sellable_on_hand_qty": opening_sellable if week_offset == 1 else None,
                     "forecast_qty": forecast,
                     "orders_qty": orders,
                     "orders_non_exception_qty": orders_non_exception,
@@ -412,20 +591,46 @@ class InventoryProjectionService:
                     "projected_on_hand_planned_qty": projected_planned,
                     # Keep legacy field as planned projection for backward compatibility.
                     "projected_on_hand_qty": projected_planned,
+                    "sellable_on_hand_qty": round(sellable_ending, 2),
+                    "expired_qty_week": round(expired_qty_week, 2),
+                    "earliest_batch_expiry_date": earliest_exp,
+                    "earliest_batch_rsl_days": batch_rsl_min,
+                    "base_earliest_rsl_days": base_earliest_rsl_days,
+                    "base_earliest_expiry_date": base_earliest_expiry_date,
+                    "batch_mode": batch_mode,
                     "below_rop": projected_actual < reorder_point,
                     "below_safety_stock": projected_actual < safety_stock,
                     "stockout": projected_actual < 0,
+                    "sellable_below_forecast": batch_mode and sellable_ending < forecast,
                     "simulated": simulated,
                 }
             )
             running_planned = projected_planned
             running_actual = projected_actual
+            running_sellable = sellable_ending
 
+        batch_summary: list[dict[str, Any]] = []
+        if batch_mode:
+            for b in batches:
+                batch_summary.append({
+                    "batch_id": b["batch_id"],
+                    "batch_qty": b["batch_qty"],
+                    "expiry_date": b["expiry_date"].isoformat(),
+                    "received_date": b["received_date"].isoformat() if b["received_date"] else None,
+                    "rsl_days": b["rsl_days"],
+                    "quality_hold_flag": b["quality_hold_flag"],
+                })
         return {
             "sku": sku,
             "product_name": product.name,
             "location": node,
             "opening_stock": opening_stock,
+            "opening_sellable_on_hand": opening_sellable,
+            "batch_mode": batch_mode,
+            "shelf_life_days": getattr(product, "shelf_life_days", None),
+            "cold_chain_flag": bool(getattr(product, "cold_chain_flag", False)),
+            "batches_at_base_week": batch_summary,
+            "total_expired_qty_in_horizon": round(total_expired, 2) if batch_mode else 0.0,
             "lead_time_days": config.lead_time_days,
             "service_level_target": config.service_level_target,
             "safety_stock_method": "parameter_or_z_sigma_sqrt_lt",
@@ -436,6 +641,123 @@ class InventoryProjectionService:
             "scenario_id": scenario_id,
             "demo_examples": self._demo_examples() if include_demo_examples else [],
         }
+
+    # ------------------------------------------------------------------
+    # Hourly projection — used by the Demand Sensing Agent to detect
+    # real-time shortage in the next N hours given the latest on-hand +
+    # rolling POS velocity.
+    # ------------------------------------------------------------------
+
+    def project_hourly(
+        self,
+        sku: str,
+        node: str,
+        *,
+        horizon_hours: int = 6,
+        as_of: datetime | None = None,
+        uplift_multiplier: float = 1.0,
+    ) -> dict[str, Any]:
+        """Project on-hand at hourly grain for the next ``horizon_hours``.
+
+        Inputs:
+          - Latest ``PosHourlyActual.on_hand_snapshot_qty`` for this sku/node, or
+            falls back to ``NetworkInventorySnapshot.on_hand_qty``.
+          - Rolling per-hour units_sold from ``PosHourlyActual`` over the last
+            48 hours → used as baseline velocity, optionally boosted by
+            ``uplift_multiplier`` for what-if scenarios.
+          - Ramadan Iftar lookup: if today is a Ramadan day, Iftar hours get a
+            1.4x spike; if today's hour matches ``peak_hour_local`` in
+            StoreVelocity (optional), apply 1.2x.
+
+        Returns ``{as_of, on_hand_start, hours: [...], iftar_local_time,
+        ramadan_day, predicted_shortage_hour, predicted_shortage_qty}``.
+        Each hour row: ``{hour_offset, hour_label, pos_predicted_units,
+        on_hand_ending, shortage_flag, iftar_in_window}``.
+        """
+        now = as_of or datetime.now().replace(second=0, microsecond=0)
+        horizon_hours = max(1, int(horizon_hours))
+        pos_rows = (
+            self.db.query(PosHourlyActual)
+            .filter(
+                PosHourlyActual.sku == sku,
+                PosHourlyActual.node_id == node,
+            )
+            .order_by(PosHourlyActual.timestamp_hour.desc())
+            .limit(48)
+            .all()
+        )
+        if not pos_rows:
+            baseline_uph = 0.0
+            latest_on_hand: float | None = None
+        else:
+            recent = pos_rows[:24]
+            total_units = sum(float(r.units_sold or 0.0) for r in recent)
+            baseline_uph = total_units / max(1, len(recent))
+            latest_on_hand = float(pos_rows[0].on_hand_snapshot_qty or 0.0)
+        if latest_on_hand is None or latest_on_hand <= 0:
+            latest_on_hand = self._opening_stock(sku, node, now.date())
+        hourly_rate = baseline_uph * max(0.0, float(uplift_multiplier))
+
+        today_iso = now.date().isoformat()
+        ramadan = (
+            self.db.query(RamadanCalendar)
+            .filter(RamadanCalendar.calendar_date == today_iso)
+            .first()
+        )
+        iftar_hour: int | None = None
+        iftar_local_time: str | None = None
+        ramadan_day: int | None = None
+        if ramadan is not None and ramadan.ramadan_day:
+            ramadan_day = int(ramadan.ramadan_day)
+            iftar_local_time = ramadan.iftar_local_time
+            try:
+                if ramadan.iftar_local_time:
+                    iftar_hour = int(ramadan.iftar_local_time.split(":")[0])
+            except (ValueError, AttributeError):
+                iftar_hour = None
+
+        running_on_hand = float(latest_on_hand)
+        hours: list[dict[str, Any]] = []
+        shortage_hour: int | None = None
+        shortage_qty: float = 0.0
+        for offset in range(horizon_hours):
+            hour_start = now + timedelta(hours=offset)
+            hour_of_day = hour_start.hour
+            iftar_in_window = (
+                iftar_hour is not None and iftar_hour - 1 <= hour_of_day <= iftar_hour + 1
+            )
+            mult = 1.4 if iftar_in_window else 1.0
+            predicted = hourly_rate * mult
+            running_on_hand = round(running_on_hand - predicted, 2)
+            row = {
+                "hour_offset": offset,
+                "hour_label": hour_start.strftime("%H:00"),
+                "hour_start_iso": hour_start.isoformat(),
+                "pos_predicted_units": round(predicted, 2),
+                "on_hand_ending": running_on_hand,
+                "shortage_flag": running_on_hand < 0,
+                "iftar_in_window": iftar_in_window,
+            }
+            hours.append(row)
+            if running_on_hand < 0 and shortage_hour is None:
+                shortage_hour = offset
+                shortage_qty = abs(running_on_hand)
+        return {
+            "sku": sku,
+            "node_id": node,
+            "as_of": now.isoformat(),
+            "on_hand_start": round(float(latest_on_hand), 2),
+            "baseline_units_per_hour": round(baseline_uph, 2),
+            "uplift_multiplier": uplift_multiplier,
+            "hours": hours,
+            "iftar_local_time": iftar_local_time,
+            "iftar_hour_local": iftar_hour,
+            "ramadan_day": ramadan_day,
+            "predicted_shortage_hour": shortage_hour,
+            "predicted_shortage_qty": round(shortage_qty, 2),
+        }
+
+    # ------------------------------------------------------------------
 
     def save_scenario(
         self,

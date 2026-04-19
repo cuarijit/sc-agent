@@ -1,0 +1,9 @@
+{
+  "slot_key": "batch_inventory",
+  "display_name": "Batch-Level Inventory",
+  "description": "Per-batch on-hand with received / expiry dates. Enables shelf-life-aware projection, expiring_batch_risk, shelf_life_shortfall, RSL-driven resolutions.",
+  "is_required": false,
+  "required_fields": ["sku", "node_id", "batch_id", "batch_qty", "expiry_date"],
+  "optional_fields": ["received_date", "quality_hold_flag", "as_of_date"],
+  "grain_hint": "sku_location_batch"
+}

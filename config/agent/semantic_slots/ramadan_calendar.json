@@ -1,0 +1,9 @@
+{
+  "slot_key": "ramadan_calendar",
+  "display_name": "Ramadan Calendar",
+  "description": "Calendar mapping dates to Ramadan day (1-30) and local Iftar time. Enables event_pattern_shift, cultural_event_window RC, and cold_chain_pre_position resolutions.",
+  "is_required": false,
+  "required_fields": ["calendar_date"],
+  "optional_fields": ["ramadan_day", "iftar_local_time", "notes"],
+  "grain_hint": "date"
+}

@@ -1,0 +1,50 @@
+{
+  "type_key": "workflow_agent",
+  "display_name": "Workflow Navigation Agent",
+  "description": "Guides users through multi-step workflows: promotion lifecycle, scenario planning, approvals, and status tracking.",
+  "status": "draft",
+  "available_actions": ["query", "navigate_workflow", "create_step", "approve_step", "export_results"],
+  "handler_hint": "chat_only",
+  "assistant_mode": "search-data-assistant",
+  "template_version": 0,
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "workflow_template_id": {
+        "type": "string",
+        "title": "Workflow Template ID",
+        "description": "ID of the entity workflow template this agent navigates."
+      },
+      "auto_advance": {
+        "type": "boolean",
+        "title": "Auto-Advance on Approval",
+        "description": "Automatically advance to the next step when the current step is approved.",
+        "default": false
+      },
+      "notification_channel": {
+        "type": "string",
+        "title": "Notification Channel",
+        "description": "How users are notified of workflow events.",
+        "default": "in-app"
+      }
+    }
+  },
+  "default_config": {
+    "auto_advance": false,
+    "notification_channel": "in-app"
+  },
+  "default_instance": {
+    "icon": "AccountTreeOutlined",
+    "button_text": "Workflow",
+    "button_style": "icon_and_text",
+    "tooltip_text": "Workflow Navigation Agent"
+  },
+  "ui_hints": {
+    "sections": [
+      {
+        "title": "Workflow Settings",
+        "fields": ["workflow_template_id", "auto_advance", "notification_channel"]
+      }
+    ]
+  }
+}

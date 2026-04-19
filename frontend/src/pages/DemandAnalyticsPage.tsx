@@ -9,21 +9,7 @@ import { type GridColDef } from "@mui/x-data-grid";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, type ReactNode } from "react";
 import { useOutletContext } from "react-router-dom";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-
+import { AreaChart, BarChart, LineChart } from "../charts";
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
@@ -251,34 +237,30 @@ export default function DemandAnalyticsPage() {
                 MAPE trend
               </Typography>
               <div className="chart-shell" style={{ minHeight: 260 }}>
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={trend} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Line type="monotone" dataKey="mape" name="MAPE %" stroke="#2679A8" strokeWidth={2} dot={{ r: 3 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+                <LineChart
+                  chartId="demand-analytics-mape-trend"
+                  data={trend as Array<Record<string, unknown>>}
+                  xKey="week"
+                  height={280}
+                  series={[{ field: "mape", label: "MAPE %", color: "#2679A8", strokeWidth: 2 }]}
+                />
               </div>
 
               <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
                 Demand vs supply gap by week
               </Typography>
               <div className="chart-shell" style={{ minHeight: 260 }}>
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={gapRows} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="demand" name="Demand" fill="#2679A8" />
-                    <Bar dataKey="supply" name="Supply" fill="#883DCF" />
-                    <Bar dataKey="gap" name="Gap (D−S)" fill="#c2410c" />
-                  </BarChart>
-                </ResponsiveContainer>
+                <BarChart
+                  chartId="demand-analytics-gap-bars"
+                  data={gapRows}
+                  xKey="week"
+                  height={280}
+                  series={[
+                    { field: "demand", label: "Demand", color: "#2679A8" },
+                    { field: "supply", label: "Supply", color: "#883DCF" },
+                    { field: "gap", label: "Gap (D−S)", color: "#c2410c" },
+                  ]}
+                />
               </div>
             </Stack>
           ) : null}
@@ -307,16 +289,13 @@ export default function DemandAnalyticsPage() {
                 MAPE trend (from filtered accuracy)
               </Typography>
               <div className="chart-shell" style={{ minHeight: 260 }}>
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={mapeTrendFromAccuracy} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="week_start" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Line type="monotone" dataKey="avg_mape" name="Avg MAPE %" stroke="#2679A8" strokeWidth={2} dot={{ r: 3 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+                <LineChart
+                  chartId="demand-analytics-mape-from-accuracy"
+                  data={mapeTrendFromAccuracy}
+                  xKey="week_start"
+                  height={280}
+                  series={[{ field: "avg_mape", label: "Avg MAPE %", color: "#2679A8", strokeWidth: 2 }]}
+                />
               </div>
             </Stack>
           ) : null}
@@ -327,36 +306,17 @@ export default function DemandAnalyticsPage() {
                 Demand (forecast) and network supply by week; shaded gap shows demand minus supply.
               </Typography>
               <div className="chart-shell" style={{ minHeight: 320 }}>
-                <ResponsiveContainer width="100%" height={340}>
-                  <AreaChart data={gapRows} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Area
-                      type="monotone"
-                      dataKey="demand"
-                      name="Demand"
-                      stroke="#2679A8"
-                      fill="rgba(38, 121, 168, 0.25)"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="supply"
-                      name="Supply"
-                      stroke="#883DCF"
-                      fill="rgba(136, 61, 207, 0.2)"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="gap"
-                      name="Gap (D−S)"
-                      stroke="#dc2626"
-                      fill="rgba(220, 38, 38, 0.35)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                <AreaChart
+                  chartId="demand-analytics-gap-area"
+                  data={gapRows}
+                  xKey="week"
+                  height={340}
+                  series={[
+                    { field: "demand", label: "Demand", color: "#2679A8" },
+                    { field: "supply", label: "Supply", color: "#883DCF" },
+                    { field: "gap", label: "Gap (D−S)", color: "#dc2626" },
+                  ]}
+                />
               </div>
             </Stack>
           ) : null}

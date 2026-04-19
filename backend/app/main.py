@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from .database import DATABASE_PATH, DATABASE_URL, SessionLocal
+from .database import DATABASE_PATH, DATABASE_URL, SessionLocal, apply_additive_column_migrations
 from .schemas import (
     AutonomousExecuteRequest,
     AutonomousResponse,
@@ -72,6 +72,7 @@ from .schemas import (
     CustomerHierarchyResponse,
     DemandPlanningKpiResponse,
 )
+from .services.agent_config_service import AgentConfigService
 from .services.chatbot_service import ChatbotService
 from .services.inventory_projection_service import InventoryProjectionService
 from .services.document_search_service import index_documents, search_documents
@@ -79,20 +80,145 @@ from .services.llm_service import llm_options_payload, resolve_llm_selection, te
 from .services.network_service import NetworkService
 from .services.planning_service import PlanningService
 from .services.seed_loader import init_database, reset_and_seed, reseed_network_only
+from .routers.agent_config_routes import router as agent_config_router
+from .routers.inventory_diagnostic_routes import router as inventory_diagnostic_router
+from .routers.inventory_allocation_routes import router as inventory_allocation_router
+from .routers.demand_sensing_routes import router as demand_sensing_router
+from .routers.auth_routes import router as auth_router
+from .routers.admin_user_routes import router as admin_user_router
+from .routers.branding_routes import router as branding_router
+from .routers.branding_admin_routes import router as branding_admin_router
+from .routers.module_config_routes import router as module_config_router
+from .services.auth_store import AuthStore
+from .services.auth_middleware import AuthMiddleware
+from .services.module_config_service import ModuleConfigService
+
+
+def _cors_origins() -> list[str]:
+    raw = os.getenv("SCP_CORS_ORIGINS", "")
+    if not raw.strip():
+        return ["*"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Run additive column migrations BEFORE any ORM query, so queries on
+    # upgraded schemas (e.g. ProductMaster's new perishable columns) don't
+    # hit "no such column" on a container image that was baked from an
+    # older DB snapshot.
+    apply_additive_column_migrations()
     db = SessionLocal()
     try:
         init_database(db)
+        AgentConfigService(db)
+        # Auth: initialize schema, seed entitlements/roles, bootstrap admin user
+        store = AuthStore(db)
+        # Modules: seed default 4 modules + their pages so /agentic-ai/admin/modules has data
+        ModuleConfigService(db).seed_default_modules()
+        if (os.getenv("SCP_BOOTSTRAP_DEMO_USERS", "true") or "true").strip().lower() != "false":
+            store.bootstrap_admin_if_missing(
+                username=os.getenv("SCP_BOOTSTRAP_ADMIN_USERNAME", "admin"),
+                password=os.getenv("SCP_BOOTSTRAP_ADMIN_PASSWORD", "admin123"),
+                name=os.getenv("SCP_BOOTSTRAP_ADMIN_NAME", "System Admin"),
+                email=os.getenv("SCP_BOOTSTRAP_ADMIN_EMAIL", "admin@local"),
+                seed_demo_users=True,
+            )
+        else:
+            store.bootstrap_admin_if_missing(
+                username=os.getenv("SCP_BOOTSTRAP_ADMIN_USERNAME", "admin"),
+                password=os.getenv("SCP_BOOTSTRAP_ADMIN_PASSWORD", "admin123"),
+                name=os.getenv("SCP_BOOTSTRAP_ADMIN_NAME", "System Admin"),
+                email=os.getenv("SCP_BOOTSTRAP_ADMIN_EMAIL", "admin@local"),
+                seed_demo_users=False,
+            )
+        # Seed the inventory-diagnostic / dairy fixture so the three puls8
+        # agents (perishable diagnostic, demand sensing, allocation &
+        # distribution) have their slot bindings registered and demo data in
+        # place the moment the app boots. Idempotent; guarded by env var.
+        if (os.getenv("SCP_BOOTSTRAP_AGENT_DEMO", "true") or "true").strip().lower() != "false":
+            import sys, traceback
+            print("[lifespan] seeding agent demo fixture…", flush=True)
+            try:
+                from .models import AgentInstanceRecord, AgentInstanceDatasetBinding
+                # Shipped demo instances are always source-of-truth from JSON
+                # — delete them so the loader re-reads them (the default loader
+                # is only_new=True and preserves existing rows, which means
+                # library/config changes in JSON wouldn't otherwise propagate).
+                # Admin-created instances are untouched.
+                _DEMO_INSTANCES = [
+                    "perishable-dairy-diagnostic",
+                    "dairy-allocation-distribution",
+                    "dairy-pos-sensing",
+                ]
+                db.query(AgentInstanceDatasetBinding).filter(
+                    AgentInstanceDatasetBinding.instance_id.in_(_DEMO_INSTANCES)
+                ).delete(synchronize_session=False)
+                db.query(AgentInstanceRecord).filter(
+                    AgentInstanceRecord.instance_id.in_(_DEMO_INSTANCES)
+                ).delete(synchronize_session=False)
+                db.commit()
+                # Re-load instances from JSON (fresh DB rows), then run seed
+                # which re-attaches slot bindings and seeds the dairy fixture.
+                AgentConfigService(db)
+                from .services.inventory_diagnostic.demo_seed import seed_inventory_diagnostic_demo
+                summary = seed_inventory_diagnostic_demo(db)
+                # Invalidate capability cache so the UI picks up fresh slot
+                # availability immediately.
+                from .services.inventory_diagnostic.capability_check import CapabilityCheck
+                from .database import engine as _engine
+                cc = CapabilityCheck(db, engine=_engine)
+                for iid in _DEMO_INSTANCES:
+                    try:
+                        cc.evaluate_instance(iid, force=True)
+                    except Exception:
+                        pass
+                print(
+                    f"[lifespan] agent demo seeded: instances={summary.get('instances')}",
+                    flush=True,
+                )
+            except Exception as exc:
+                # Don't block app-up if the demo seed fails — agents that
+                # don't need dairy data will still work, and admins can retry
+                # the demo via POST /admin/inventory-diagnostic/seed-demo.
+                print(f"[lifespan] agent demo seed FAILED: {exc}", flush=True)
+                traceback.print_exc(file=sys.stdout)
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
     finally:
         db.close()
     yield
 
 
 app = FastAPI(title="Inventory Planning and Optimization API", version="1.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(AuthMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(auth_router)
+app.include_router(admin_user_router)
+app.include_router(branding_router)
+app.include_router(branding_admin_router)
+app.include_router(module_config_router)
+app.include_router(agent_config_router)
+app.include_router(inventory_diagnostic_router)
+app.include_router(inventory_allocation_router)
+app.include_router(demand_sensing_router)
+
+# Static files for branding library + uploads — public (LoginPage shows logos pre-auth)
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+_branding_dir = _Path(__file__).resolve().parents[2] / "config" / "branding"
+_branding_dir.mkdir(parents=True, exist_ok=True)
+(_branding_dir / "library").mkdir(exist_ok=True)
+(_branding_dir / "uploads").mkdir(exist_ok=True)
+app.mount("/static/branding", StaticFiles(directory=str(_branding_dir)), name="branding")
 
 
 def get_db_session():

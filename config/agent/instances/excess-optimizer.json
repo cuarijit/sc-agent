@@ -1,0 +1,44 @@
+{
+  "instance_id": "excess-optimizer",
+  "agent_type": "inventory_diagnostic_agent",
+  "display_name": "Excess Inventory Optimizer",
+  "description": "Identifies SKUs carrying excess stock and recommends outbound fixes: transfer-out, pause inbound orders, markdown promos.",
+  "icon": "TrendingDownOutlined",
+  "button_text": "Excess Optimizer",
+  "button_style": "icon_and_text",
+  "tooltip_text": "Focus: reduce working capital on overstocked SKUs",
+  "module_slug": "meio-replenishment",
+  "is_active": true,
+  "type_specific_config": {
+    "planning_horizon_weeks": 12,
+    "enabled_intents": ["show", "diagnose", "solve", "simulate"],
+    "enabled_library": {
+      "problem_templates": ["excess_inventory_risk"],
+      "root_cause_templates": ["forecast_overstated", "substitution_cannibalization"],
+      "resolution_families": ["transfer_out_to_sibling", "pause_inbound", "markdown_promo"],
+      "action_templates": ["create_recommendation_record", "export_action_csv", "create_task"]
+    },
+    "decision_graph_overrides": {"disabled_edges": []},
+    "per_template_overrides": {
+      "excess_inventory_risk": {
+        "rule": {"type": "sustained_excess_over_cover_ceiling", "cover_weeks_threshold": 10, "consecutive_weeks": 3}
+      },
+      "forecast_overstated": {"weight": 0.45}
+    },
+    "prioritization_weights": {
+      "revenue_at_risk": 0.40,
+      "stockout_severity": 0.05,
+      "customer_facing_flag": 0.10,
+      "abc_class": 0.25,
+      "lead_time_weeks": 0.20
+    },
+    "execute_mode": {"dispatch": false, "delivery_mode": "csv", "webhook_url": null, "csv_path": "/tmp/excess_optimizer"},
+    "action_permissions_per_intent": {
+      "show": [],
+      "diagnose": [],
+      "solve": ["create_recommendation_record", "export_action_csv", "create_task"],
+      "simulate": [],
+      "execute": []
+    }
+  }
+}

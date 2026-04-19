@@ -1,0 +1,103 @@
+{
+  "instance_id": "perishable-dairy-diagnostic",
+  "agent_type": "inventory_diagnostic_agent",
+  "display_name": "Perishable Inventory Diagnostic (Dairy)",
+  "description": "Shelf-life-aware diagnostic for dairy & chilled SKUs (milk, laban, yogurt, cheese, juice). Surfaces expiring batches, projected shelf-life shortfalls, and recommends markdown / redirect / expedite / donate actions at batch grain.",
+  "icon": "AcUnitOutlined",
+  "button_text": "Perishable Dairy Diagnostic",
+  "button_style": "icon_and_text",
+  "tooltip_text": "Focus: shelf-life-aware projected inventory + expiry-risk resolution for dairy and chilled SKUs.",
+  "module_slug": "meio-replenishment",
+  "is_active": true,
+  "type_specific_config": {
+    "planning_horizon_weeks": 4,
+    "enabled_intents": ["show", "diagnose", "solve", "simulate", "execute"],
+    "enabled_library": {
+      "problem_templates": [
+        "expiring_batch_risk",
+        "shelf_life_shortfall"
+      ],
+      "root_cause_templates": [
+        "late_supply",
+        "network_imbalance",
+        "forecast_overstated",
+        "rsl_below_threshold",
+        "cold_chain_break",
+        "aged_receipt"
+      ],
+      "resolution_families": [
+        "transfer_excess",
+        "expedite_inbound",
+        "reroute_intransit",
+        "accelerated_markdown",
+        "donate_or_scrap",
+        "expedite_fresh_batch",
+        "redirect_to_high_velocity_store",
+        "transfer_out_to_sibling"
+      ],
+      "action_templates": [
+        "create_task",
+        "create_recommendation_record",
+        "export_action_csv"
+      ]
+    },
+    "per_template_overrides": {
+      "expiring_batch_risk": {
+        "rule": {"type": "batch_expiry_within_window", "rsl_days_threshold": 2, "min_batch_qty": 1},
+        "severity": {"critical_if_rsl_days_le": 1, "warning_if_rsl_days_le": 2, "default": "warning"}
+      },
+      "shelf_life_shortfall": {
+        "rule": {"type": "sellable_below_horizon_demand", "horizon_weeks": 2}
+      },
+      "excess_inventory_risk": {
+        "rule": {"type": "sustained_excess_over_cover_ceiling", "cover_weeks_threshold": 3, "consecutive_weeks": 2}
+      }
+    },
+    "prioritization_weights": {
+      "revenue_at_risk": 0.25,
+      "stockout_severity": 0.20,
+      "customer_facing_flag": 0.15,
+      "abc_class": 0.10,
+      "lead_time_weeks": 0.05,
+      "expiry_risk": 0.25
+    },
+    "execute_mode": {
+      "dispatch": false,
+      "delivery_mode": "recommendation_record",
+      "csv_path": "/tmp/perishable_dairy_actions"
+    },
+    "action_permissions_per_intent": {
+      "show": [],
+      "diagnose": [],
+      "solve": ["create_recommendation_record", "create_task", "export_action_csv"],
+      "simulate": [],
+      "execute": ["create_task", "create_recommendation_record", "export_action_csv"]
+    },
+    "ui_prompts": {
+      "show": [
+        {"id": "show_expiring_48h", "label": "Expiring in 48h", "text": "Which cheese, yogurt, and laban batches expire in the next 48 hours across the network?"},
+        {"id": "show_milk_east", "label": "Milk sellable at East", "text": "Project milk sellable-on-hand at STORE-EAST for the next 7 days considering expiry."},
+        {"id": "show_excess_perishable", "label": "Excess perishable", "text": "Where am I carrying perishable inventory that won't sell before expiry?"},
+        {"id": "show_feta_cdc", "label": "Feta at CDC", "text": "Show the batch status for CHEESE-FETA-400G at CDC-DAIRY-01."}
+      ],
+      "diagnose": [
+        {"id": "diag_feta_cdc", "label": "Why feta at risk?", "text": "Why is feta cheese at CDC-DAIRY-01 at risk — give me the root cause and evidence."},
+        {"id": "diag_milk_east", "label": "Milk East RSL", "text": "MILK-FULL-1L at STORE-EAST has batches expiring in 1 day — what's driving it?"},
+        {"id": "diag_yogurt_cdc", "label": "Yogurt slow", "text": "Diagnose why YOGURT-FRUIT-4P at CDC-DAIRY-02 is slow-moving against its shelf life."},
+        {"id": "diag_top_perishable", "label": "Top perishable risks", "text": "Diagnose the top 3 perishable risks in my network right now."}
+      ],
+      "solve": [
+        {"id": "solve_yogurt_shortfall", "label": "Yogurt shortfall", "text": "YOGURT-PLAIN-500G at STORE-WEST will shortfall on Day 3 before next delivery — what's the plan?"},
+        {"id": "solve_milk_east", "label": "Milk East mitigation", "text": "Milk at STORE-EAST has 60% of on-hand expiring in 1 day — best mitigation?"},
+        {"id": "solve_markdown_1d", "label": "Markdown ≤1d RSL", "text": "Propose a markdown / redirect / donation plan for all batches with RSL ≤ 1 day."},
+        {"id": "solve_feta_cdc", "label": "Solve feta risk", "text": "Solve the CHEESE-FETA-400G expiry risk at CDC-DAIRY-01 — give me concrete next steps."}
+      ],
+      "simulate": [
+        {"id": "sim_expedite_laban", "label": "Expedite laban", "text": "If I expedite a fresh LABAN-500ML batch from RDC-DAIRY-NORTH, does STORE-EAST clear the shortfall?"},
+        {"id": "sim_redirect_yogurt", "label": "Redirect yogurt", "text": "If I redirect aged YOGURT-FRUIT-4P from CDC-DAIRY-02 to STORE-MALL-01 (highest velocity), how much waste drops?"},
+        {"id": "sim_markdown_network", "label": "Markdown network-wide", "text": "If I apply a 25% markdown network-wide on ≤1-day-RSL items, what's the projected waste avoided and revenue impact?"},
+        {"id": "sim_cold_chain_event", "label": "Cold-chain event", "text": "If CHEESE-FETA-400G at CDC-DAIRY-01 loses the cold chain for 4 hours, how does projected sellable inventory change?"}
+      ]
+    }
+  }
+}

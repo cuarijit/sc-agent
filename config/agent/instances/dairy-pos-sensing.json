@@ -1,0 +1,89 @@
+{
+  "instance_id": "dairy-pos-sensing",
+  "agent_type": "demand_sensing_agent",
+  "display_name": "Dairy POS & Ramadan Sensing",
+  "description": "Real-time demand sensing for perishable dairy (milk, laban, yogurt, cheese, juice). Ingests hourly POS + Ramadan calendar + current on-hand; flags POS divergence, real-time shortage in the next 6 hours, and event-driven pre-position gaps; recommends re-forecast, intra-day transfer, or cold-chain pre-position.",
+  "icon": "SensorsOutlined",
+  "button_text": "Dairy POS & Ramadan Sensing",
+  "button_style": "icon_and_text",
+  "tooltip_text": "Focus: real-time POS divergence, Ramadan ramp detection, short-horizon shortage + pre-position for dairy.",
+  "module_slug": "agentic-ai",
+  "is_active": true,
+  "type_specific_config": {
+    "sensing_horizon_hours": 6,
+    "divergence_threshold_pct": 20,
+    "ramadan_event_lookahead_days": 14,
+    "enabled_intents": ["show", "analyse", "diagnose", "solve", "simulate"],
+    "enabled_library": {
+      "problem_templates": [
+        "short_term_demand_spike",
+        "pos_signal_divergence",
+        "event_pattern_shift",
+        "real_time_shortage_at_current_pos",
+        "cold_chain_prepos_gap"
+      ],
+      "root_cause_templates": [
+        "pos_velocity_surge",
+        "cultural_event_window",
+        "upstream_supply_lag_vs_velocity"
+      ],
+      "resolution_families": [
+        "reforecast_short_horizon",
+        "trigger_replen_pull",
+        "cold_chain_pre_position",
+        "shift_production_mix",
+        "intra_day_emergency_transfer"
+      ],
+      "action_templates": [
+        "create_task",
+        "create_recommendation_record",
+        "export_action_csv"
+      ]
+    },
+    "prioritization_weights": {
+      "revenue_at_risk": 0.20,
+      "stockout_severity": 0.30,
+      "customer_facing_flag": 0.20,
+      "abc_class": 0.10,
+      "velocity_surge_score": 0.20
+    },
+    "execute_mode": {
+      "dispatch": false,
+      "delivery_mode": "recommendation_record",
+      "csv_path": "/tmp/dairy_pos_sensing_actions"
+    },
+    "action_permissions_per_intent": {
+      "show": [],
+      "analyse": [],
+      "diagnose": [],
+      "solve": ["create_recommendation_record", "create_task", "export_action_csv"],
+      "simulate": []
+    },
+    "ui_prompts": {
+      "show": [
+        {"id": "show_laban_east", "label": "Laban POS vs forecast", "text": "What's today's hourly POS vs forecast for LABAN-500ML at STORE-EAST?"},
+        {"id": "show_next_6h_milk", "label": "Milk next 6h", "text": "Show current on-hand vs next 6 hours of predicted POS for MILK-FULL-1L network-wide."},
+        {"id": "show_divergent_skus", "label": "Divergent SKUs", "text": "Which SKUs are diverging from forecast by more than 20% this week?"},
+        {"id": "show_ramadan_today", "label": "Ramadan today", "text": "Is today a Ramadan day? What's the Iftar time and how should I prepare?"}
+      ],
+      "analyse": [
+        {"id": "analyse_ramadan_trend", "label": "Ramadan dairy trend", "text": "How is Ramadan Day 18 demand trending across laban, yogurt, and juice vs prior year?"},
+        {"id": "analyse_realtime_short", "label": "Real-time shortages", "text": "Where is real-time POS signalling a shortage before end-of-day?"},
+        {"id": "analyse_tomorrow_delivery", "label": "Before tomorrow", "text": "Which stores are at risk of stocking out before tomorrow's delivery given current POS velocity?"},
+        {"id": "analyse_iftar_pattern", "label": "Iftar hour pattern", "text": "Which SKUs show the strongest Iftar-hour spike pattern at STORE-EAST?"}
+      ],
+      "solve": [
+        {"id": "solve_ramadan_prepos", "label": "Pre-position for Ramadan", "text": "Ramadan starts in 2 weeks — how should I re-forecast and pre-position dairy?"},
+        {"id": "solve_laban_6h", "label": "Laban East 6h plan", "text": "LABAN-500ML at STORE-EAST shows 35% POS divergence — what should I do in the next 6 hours?"},
+        {"id": "solve_shift_production", "label": "Shift production next week", "text": "Given current POS signals, how should I shift production mix next week?"},
+        {"id": "solve_emergency_transfer", "label": "Emergency transfer plan", "text": "Trigger an emergency transfer plan for SKUs breaching on-hand today."}
+      ],
+      "simulate": [
+        {"id": "sim_iftar_spike", "label": "Iftar laban +40%", "text": "If Iftar-hour laban demand spikes 40% at STORE-EAST, what's the shortage risk before the 6 PM delivery?"},
+        {"id": "sim_emergency_transfer", "label": "West→East transfer", "text": "If I trigger an emergency transfer from STORE-WEST to STORE-EAST for laban, does the 6-hour shortage clear?"},
+        {"id": "sim_ramadan_20over", "label": "Ramadan +20% over forecast", "text": "If Ramadan demand lands 20% above current forecast, where do we break first?"},
+        {"id": "sim_milk_double", "label": "Milk velocity doubles", "text": "If MILK-FULL-1L velocity doubles for the next 4 hours at STORE-EAST, what's my on-hand trajectory?"}
+      ]
+    }
+  }
+}

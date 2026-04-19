@@ -7,8 +7,7 @@ import { type GridColDef, type GridRenderCellParams } from "@mui/x-data-grid";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-
+import { BarChart } from "../charts";
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
@@ -252,16 +251,13 @@ export default function DemandCustomersPage() {
                   </Stack>
                 </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }} className="chart-shell" style={{ minHeight: 220 }}>
-                  <ResponsiveContainer width="100%" height={240}>
-                    <BarChart data={planningBarData} margin={{ top: 8, right: 12, left: 0, bottom: 48 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="bucket" tick={{ fontSize: 10 }} interval={0} angle={-18} textAnchor="end" height={56} />
-                      <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                      <Tooltip />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Bar dataKey="count" name="Customers" fill="#2679A8" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <BarChart
+                    chartId="demand-customers-planning-bar"
+                    data={planningBarData}
+                    xKey="bucket"
+                    height={240}
+                    series={[{ field: "count", label: "Customers", color: "#2679A8" }]}
+                  />
                 </Box>
               </Stack>
               <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>

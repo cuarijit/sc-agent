@@ -25,5 +25,14 @@ export const ROUTE_PATHS = {
   demandForecastModification: "/demand/forecast-modification",
   // Agentic AI module
   agentConfiguration: "/agentic-ai/agent-configuration",
+  inventoryDiagnosticConsole: "/agentic-ai/inventory-diagnostic",
+  allocationConsole: "/agentic-ai/allocation-distribution",
+  demandSensingConsole: "/agentic-ai/demand-sensing",
   globalFilterCompliance: "/agentic-ai/global-filter-compliance",
+  // Administration
+  adminUsers: "/agentic-ai/admin/users",
+  adminModules: "/agentic-ai/admin/modules",
+  adminBranding: "/agentic-ai/admin/branding",
+  // Auth
+  login: "/login",
 } as const;

@@ -10,8 +10,7 @@ import { type GridColDef, type GridRenderCellParams } from "@mui/x-data-grid";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-
+import { BarChart, LineChart } from "../charts";
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
@@ -516,23 +515,21 @@ export default function DemandForecastingPage() {
                   </Stack>
                 </Stack>
                 <div className="chart-shell">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <ComposedChart data={workbenchData} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="weekLabel" tick={{ fontSize: 10 }} />
-                      <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
-                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} unit="%" />
-                      <Tooltip contentStyle={{ fontSize: 11 }} />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Bar yAxisId="left" dataKey="baseline" name="Baseline Qty" fill="#2563eb" radius={[3, 3, 0, 0]} barSize={14} />
-                      <Bar yAxisId="left" dataKey="promoLift" name="Promo Lift" fill="#f59e0b" radius={[3, 3, 0, 0]} barSize={14} />
-                      <Line yAxisId="left" type="monotone" dataKey="finalForecast" name="Final Forecast" stroke="#94a3b8" strokeWidth={1.5} dot={{ r: 2 }} />
-                      <Line yAxisId="left" type="monotone" dataKey="puls8_360" name="Puls8 360 ADS" stroke="#7c3aed" strokeWidth={2} dot={{ r: 3, fill: "#7c3aed" }} />
-                      <Line yAxisId="left" type="monotone" dataKey="adjustedForecast" name="Adjusted Forecast" stroke="#e11d48" strokeWidth={2.5} dot={{ r: 4, fill: "#e11d48", stroke: "#fff", strokeWidth: 1 }} />
-                      <Line yAxisId="left" type="monotone" dataKey="actual" name="Actual" stroke="#16a34a" strokeWidth={2} dot={{ r: 3 }} />
-                      <Line yAxisId="right" type="monotone" dataKey="adjVariancePct" name="Adj Variance %" stroke="#dc2626" strokeWidth={1.5} strokeDasharray="5 3" dot={false} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                  <LineChart
+                    chartId="demand-forecasting-workbench"
+                    data={workbenchData}
+                    xKey="weekLabel"
+                    height={300}
+                    series={[
+                      { field: "baseline", label: "Baseline Qty", type: "bar", color: "#2563eb" },
+                      { field: "promoLift", label: "Promo Lift", type: "bar", color: "#f59e0b" },
+                      { field: "finalForecast", label: "Final Forecast", type: "line", color: "#94a3b8", strokeWidth: 1.5 },
+                      { field: "puls8_360", label: "Puls8 360 ADS", type: "line", color: "#7c3aed", strokeWidth: 2 },
+                      { field: "adjustedForecast", label: "Adjusted Forecast", type: "line", color: "#e11d48", strokeWidth: 2.5 },
+                      { field: "actual", label: "Actual", type: "line", color: "#16a34a", strokeWidth: 2 },
+                      { field: "adjVariancePct", label: "Adj Variance %", type: "line", color: "#dc2626", strokeWidth: 1.5, strokeDasharray: "dashed", showDot: false },
+                    ]}
+                  />
                 </div>
               </Box>
 
@@ -717,16 +714,13 @@ export default function DemandForecastingPage() {
                 Rows combine promotional lift with syndicated feeds; adjusted forecast total is summed by SKU and location from baseline grid data.
               </Typography>
               <div className="chart-shell" style={{ minHeight: 280 }}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={liftImpactBySource} margin={{ top: 8, right: 16, left: 0, bottom: 56 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="source" tick={{ fontSize: 10 }} interval={0} angle={-28} textAnchor="end" height={64} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="lift" name="Lift volume" fill="#2679A8" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <BarChart
+                  chartId="demand-forecasting-syndicated-lift"
+                  data={liftImpactBySource}
+                  xKey="source"
+                  height={300}
+                  series={[{ field: "lift", label: "Lift volume", color: "#2679A8" }]}
+                />
               </div>
               <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
                 Syndicated alignment detail

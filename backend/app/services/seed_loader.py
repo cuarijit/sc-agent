@@ -1661,9 +1661,15 @@ def _seed_demand_planning(db: Session) -> None:
 
     skus = [p.sku for p in products]
     locs = [loc.code for loc in locations]
-    base_week = date(2026, 3, 8)
-    weeks = [(base_week + timedelta(days=7 * i)).isoformat() for i in range(12)]
-    months = ["2026-03", "2026-04", "2026-05"]
+    # Expand the horizon from 12 → 52 weeks so Demand Forecasting / Accuracy /
+    # Analytics pages can render a full year of history + forward forecast.
+    # The first 26 weeks are historical (have actuals); the next 26 weeks are
+    # forward forecast (actual_qty=0).
+    history_weeks = 26
+    horizon_weeks = 52
+    base_week = date(2025, 10, 5)  # Sunday — 26 weeks before 2026-04-05
+    weeks = [(base_week + timedelta(days=7 * i)).isoformat() for i in range(horizon_weeks)]
+    months = sorted({ws[:7] for ws in weeks})  # noqa: F841 — kept for downstream callers
 
     customers = [
         ("CUST-DIRECT-001", "Costco Wholesale", None, "direct", "club", "West", "BT-001", "ST-001", "direct"),
@@ -1685,42 +1691,75 @@ def _seed_demand_planning(db: Session) -> None:
         ))
     db.flush()
 
+    # Forecast-source rotation so the data shows a real mix (statistical,
+    # ML/DL, consensus override, customer collaboration) — every page that
+    # filters/groups by source now has > 1 bucket to chart.
+    forecast_sources = ["statistical", "ml_xgboost", "dl_lstm", "consensus", "customer_input"]
+
     forecast_records = []
     accuracy_records = []
     for si, sku in enumerate(skus):
         sku_seed = sum(ord(c) for c in sku) % 11
+        # Per-SKU annual seasonality phase (so different SKUs peak in
+        # different quarters, giving the analytics charts variety).
+        seasonal_phase = (si * 0.7) % (2 * math.pi)
+        # Slow secular trend: half the SKUs grow ~10% / year, half decline ~5%.
+        annual_trend = 0.10 if si % 2 == 0 else -0.05
         for li, loc in enumerate(locs):
             demand_base = 80.0 + sku_seed * 3.5 + li * 2.0
+            # Per-(sku,loc) source assignment so each combination has a
+            # consistent "source of truth" — but the mix across the catalog
+            # is even.
+            source = forecast_sources[(si + li) % len(forecast_sources)]
             for wi, ws in enumerate(weeks):
-                season = 1.0 + 0.08 * math.sin((wi + sku_seed) * (math.pi / 6))
-                promo_in_week = wi in (4, 5) and si < 4
-                lift = 0.20 if promo_in_week else 0.0
-                baseline = round(demand_base * season, 1)
+                # Annual seasonality (52-week period) + small intra-quarter
+                # ripple, both phase-shifted per-SKU.
+                year_pos = wi / 52.0
+                annual_season = 1.0 + 0.18 * math.sin(2 * math.pi * year_pos + seasonal_phase)
+                qtr_ripple = 1.0 + 0.05 * math.sin((wi + sku_seed) * (math.pi / 6))
+                trend_factor = 1.0 + annual_trend * year_pos
+                # 4 promotions per year per SKU — at weeks 8-9, 21-22, 34-35, 47-48.
+                promo_window = wi % 13 in (8, 9)
+                promo_in_week = promo_window and (si + li) % 3 == 0
+                lift = 0.25 if promo_in_week else 0.0
+                baseline = round(demand_base * annual_season * qtr_ripple * trend_factor, 1)
                 promo_lift = round(baseline * lift, 1)
-                noise = ((si + li + wi) % 7 - 3) * 2.5
-                actual = round(max(0, baseline + promo_lift + noise), 1)
+                # Forecast bias depends on source — ML is the most accurate,
+                # customer-input the noisiest.
+                bias_factor = {
+                    "statistical": 0.04,
+                    "ml_xgboost": 0.02,
+                    "dl_lstm": 0.025,
+                    "consensus": 0.05,
+                    "customer_input": 0.10,
+                }.get(source, 0.05)
+                # Historical weeks have actuals; forward weeks do not.
+                is_history = wi < history_weeks
+                if is_history:
+                    noise_amp = max(2.0, baseline * bias_factor)
+                    noise = ((si + li * 3 + wi * 7) % 11 - 5) * (noise_amp / 5)
+                    actual = round(max(0, baseline + promo_lift + noise), 1)
+                else:
+                    actual = 0.0
                 consensus = round(baseline + promo_lift * 0.9, 1)
                 final = round(baseline + promo_lift, 1)
                 forecast_records.append(DemandForecast(
                     sku=sku, location=loc, week_start=ws,
                     baseline_qty=baseline, promo_lift_qty=promo_lift,
                     consensus_qty=consensus, final_forecast_qty=final,
-                    actual_qty=actual, forecast_source="statistical",
+                    actual_qty=actual, forecast_source=source,
                     updated_by="system", updated_at=f"{ws}T08:00:00",
                 ))
-                if actual > 0:
+                if is_history and actual > 0:
                     error = abs(final - actual) / actual * 100
                     bias_val = (final - actual) / actual * 100
-                else:
-                    error = 0.0
-                    bias_val = 0.0
-                accuracy_records.append(DemandForecastAccuracy(
-                    sku=sku, location=loc, week_start=ws,
-                    forecast_qty=final, actual_qty=actual,
-                    mape=round(error, 1), bias=round(bias_val, 1),
-                    wmape=round(error * 0.95, 1),
-                    tracking_signal=round(bias_val / max(1, error) * 2.0, 2),
-                ))
+                    accuracy_records.append(DemandForecastAccuracy(
+                        sku=sku, location=loc, week_start=ws,
+                        forecast_qty=final, actual_qty=actual,
+                        mape=round(error, 1), bias=round(bias_val, 1),
+                        wmape=round(error * 0.95, 1),
+                        tracking_signal=round(bias_val / max(1, error) * 2.0, 2),
+                    ))
     db.add_all(forecast_records)
     db.add_all(accuracy_records)
     db.flush()

@@ -81,6 +81,24 @@ DATABASE_PATH = _path_from_sqlite_url(DATABASE_URL)
 
 connect_args = {"check_same_thread": False, "timeout": 30} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
+
+# Enable WAL mode so concurrent readers don't block each other (the AuthMiddleware
+# does a SELECT-only validate_session on every request — without WAL, SQLite
+# serializes them and parallel page loads stall for many seconds).
+if DATABASE_URL.startswith("sqlite"):
+    from sqlalchemy import event as _sa_event
+
+    @_sa_event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_conn, _conn_record):
+        cur = dbapi_conn.cursor()
+        try:
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA synchronous=NORMAL")
+            cur.execute("PRAGMA busy_timeout=30000")
+            cur.execute("PRAGMA temp_store=MEMORY")
+        finally:
+            cur.close()
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 Base = declarative_base()
 
@@ -91,3 +109,43 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def apply_additive_column_migrations() -> None:
+    """Additive-only SQLite schema migrations.
+
+    Adds nullable columns to existing tables when upgrading a DB created by
+    an older version of the schema. New tables are created via
+    Base.metadata.create_all — only pre-existing tables need column adds.
+    """
+    if not DATABASE_URL.startswith("sqlite"):
+        return None
+    path = _path_from_sqlite_url(DATABASE_URL)
+    if path is None or not path.exists():
+        return None
+
+    additions: dict[str, list[tuple[str, str]]] = {
+        "products": [
+            ("shelf_life_days", "INTEGER"),
+            ("cold_chain_flag", "INTEGER DEFAULT 0"),
+            ("category_perishable", "INTEGER DEFAULT 0"),
+        ],
+    }
+
+    try:
+        conn = sqlite3.connect(path)
+        cur = conn.cursor()
+        for table, cols in additions.items():
+            cur.execute(f"PRAGMA table_info({table})")
+            existing = {row[1] for row in cur.fetchall()}
+            if not existing:
+                continue
+            for col_name, col_ddl in cols:
+                if col_name in existing:
+                    continue
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_ddl}")
+        conn.commit()
+        conn.close()
+    except Exception:
+        return None
+    return None

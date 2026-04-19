@@ -1,0 +1,9 @@
+{
+  "slot_key": "opening_inventory",
+  "display_name": "Opening Inventory",
+  "description": "On-hand inventory snapshot at the base week. The projection engine's starting balance for every sku_location.",
+  "is_required": true,
+  "required_fields": ["sku", "node_id", "on_hand_qty"],
+  "optional_fields": ["as_of_date", "quality_hold_flag", "expiry_date"],
+  "grain_hint": "sku_location"
+}

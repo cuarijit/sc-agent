@@ -1,0 +1,441 @@
+{
+  "type_key": "inventory_diagnostic_agent",
+  "display_name": "Inventory Diagnostic Agent",
+  "description": "Agentic supply-chain agent. The template declares the FULL library of intents, problem templates, root causes, resolution families, and action templates the agent can execute — plus the decision graph (legal edges from problem \u2192 root cause \u2192 resolution \u2192 action). Each instance configures a SUBSET of this library that represents what that instance does: e.g. stockout-resolver, excess-optimizer, promo-readiness.",
+  "status": "draft",
+  "available_actions": [
+    "show",
+    "diagnose",
+    "solve",
+    "simulate",
+    "execute",
+    "export_action_csv"
+  ],
+  "handler_hint": "inventory_diagnostic",
+  "assistant_mode": "inventory-diagnostic",
+  "template_version": 9,
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "planning_horizon_weeks": {
+        "type": "number",
+        "title": "Planning Horizon (weeks)",
+        "description": "Number of weeks to project forward at sku_location_week grain.",
+        "default": 12,
+        "minimum": 1,
+        "maximum": 52,
+        "x-field": "slider"
+      }
+    }
+  },
+  "default_config": {
+    "planning_horizon_weeks": 12,
+    "base_week_source": "auto_from_snapshot",
+    "week_bucket_rule": "iso_week_monday",
+    "enabled_intents": ["show", "diagnose", "solve", "simulate", "execute"],
+    "enabled_library": {
+      "problem_templates": [
+        "projected_stockout",
+        "portfolio_inventory_risk",
+        "promotion_supply_gap",
+        "excess_inventory_risk",
+        "expiring_batch_risk",
+        "shelf_life_shortfall"
+      ],
+      "root_cause_templates": [
+        "late_supply",
+        "network_imbalance",
+        "promo_uplift",
+        "blocked_inventory",
+        "inventory_policy_issue",
+        "forecast_overstated",
+        "substitution_cannibalization",
+        "rsl_below_threshold",
+        "cold_chain_break",
+        "aged_receipt"
+      ],
+      "resolution_families": [
+        "transfer_excess",
+        "reroute_intransit",
+        "expedite_inbound",
+        "reallocate_demand",
+        "phase_promotion",
+        "release_blocked_stock",
+        "pull_forward_supply",
+        "markdown_promo",
+        "transfer_out_to_sibling",
+        "pause_inbound",
+        "pre_build_inventory",
+        "accelerated_markdown",
+        "donate_or_scrap",
+        "expedite_fresh_batch",
+        "redirect_to_high_velocity_store"
+      ],
+      "action_templates": [
+        "create_task",
+        "create_recommendation_record",
+        "create_webhook_payload",
+        "export_action_csv"
+      ]
+    },
+    "decision_graph_overrides": {"disabled_edges": []},
+    "per_template_overrides": {},
+    "per_call_site_prompts": {},
+    "prioritization_weights": {
+      "revenue_at_risk": 0.35,
+      "stockout_severity": 0.25,
+      "customer_facing_flag": 0.15,
+      "abc_class": 0.15,
+      "lead_time_weeks": 0.10
+    },
+    "llm_policy": {
+      "intent_parse": {"provider": "openai", "model": "gpt-4.1-mini", "temperature": 0, "max_tokens": 400},
+      "followup_interpret": {"provider": "openai", "model": "gpt-4.1-mini", "temperature": 0, "max_tokens": 250},
+      "explanation": {"provider": "openai", "model": "gpt-4.1-mini", "temperature": 0.2, "max_tokens": 900}
+    },
+    "execute_mode": {
+      "dispatch": false,
+      "delivery_mode": "csv",
+      "webhook_url": null,
+      "csv_path": "/tmp/inventory_diagnostic_actions"
+    },
+    "action_permissions_per_intent": {
+      "show": [],
+      "diagnose": [],
+      "solve": ["create_recommendation_record", "create_task", "export_action_csv"],
+      "simulate": [],
+      "execute": ["create_webhook_payload", "create_task", "create_recommendation_record", "export_action_csv"]
+    },
+    "capability_overrides": {
+      "force_disable": [],
+      "force_enable": []
+    },
+    "ui_prompts": {
+      "show": [
+        {"id": "show_stockouts_6w", "label": "Stock outs in next 6 weeks", "text": "Show me all projected stockouts in the next 6 weeks."},
+        {"id": "show_excess", "label": "Excess carrying margin impact", "text": "Where is excess inventory hurting margin?"}
+      ],
+      "diagnose": [
+        {"id": "diagnose_top", "label": "Diagnose my top risks", "text": "Diagnose the top 3 inventory risks across my network."}
+      ],
+      "solve": [
+        {"id": "solve_stockouts", "label": "Solve stockouts", "text": "Solve the projected stockouts in the next 6 weeks — propose resolutions."}
+      ],
+      "simulate": [
+        {"id": "simulate_expedite", "label": "Simulate expedite", "text": "If I expedite the late order, does the breach clear?"}
+      ]
+    }
+  },
+  "default_instance": {
+    "icon": "Inventory2Outlined",
+    "button_text": "Inventory Diagnostic",
+    "button_style": "icon_and_text",
+    "tooltip_text": "Inventory Diagnostic Agent"
+  },
+  "ui_hints": {
+    "sections": [
+      {"title": "Planning horizon", "fields": ["planning_horizon_weeks"]}
+    ]
+  },
+  "behavior": {
+    "scope_detection": {
+      "db_signal_keywords": [
+        "stock", "stockout", "stock-out", "inventory", "risk", "shortage",
+        "excess", "overstock", "markdown", "promotion", "promo", "demand",
+        "supply", "forecast", "sku", "location", "node", "week",
+        "lead time", "safety stock", "reorder", "transfer", "expedite", "reroute"
+      ],
+      "out_of_scope_keywords": [
+        "joke", "poem", "story", "weather", "news", "movie", "song",
+        "translate", "email", "resume"
+      ],
+      "out_of_scope_response": "I can only help with inventory diagnostic questions (stockout risk, excess inventory, promotion supply gaps, and resolution planning)."
+    },
+    "ambiguity_detection": {
+      "weak_keywords": [],
+      "empty_question_message": "Please ask an inventory diagnostic question (e.g. 'which SKUs will stock out in the next 6 weeks?').",
+      "too_broad_message": "Your question is too broad. Scope it to a SKU, node, or time window.",
+      "ambiguity_follow_ups": []
+    },
+    "intents": [
+      {"id": "show",     "display_name": "Show",     "description": "Read-only listing of problems in scope",
+        "pipeline_stages": ["followup","intent","scope","capability","projection","detect","prioritize","compose","audit"]},
+      {"id": "diagnose", "display_name": "Diagnose", "description": "Show problems + root causes",
+        "pipeline_stages": ["followup","intent","scope","capability","projection","detect","prioritize","rca","compose","audit"]},
+      {"id": "solve",    "display_name": "Solve",    "description": "Full recommendation: problems + RCs + resolutions + draft action plan",
+        "pipeline_stages": ["followup","intent","scope","capability","projection","detect","prioritize","rca","resolve","simulate","map_actions","compose","audit"]},
+      {"id": "simulate", "display_name": "Simulate", "description": "Apply a planner 'what-if' override through the projection",
+        "pipeline_stages": ["followup","intent","scope","capability","projection","detect","prioritize","rca","resolve","simulate","compose","audit"]},
+      {"id": "execute",  "display_name": "Execute",  "description": "Promote draft action plans to queued (and optionally dispatched)",
+        "pipeline_stages": ["followup","intent","scope","capability","projection","detect","prioritize","rca","resolve","simulate","map_actions","compose","audit"]}
+    ],
+    "semantic_slots": {
+      "required": ["calendar","item_master","location_master","opening_inventory","demand_plan","supply_plan","sourcing_network","inventory_policy"],
+      "optional": ["promotion_plan","in_transit_inventory","supply_delay_signal","actual_demand","batch_inventory"]
+    },
+    "slot_catalog": [
+      {"slot_key": "calendar",             "required_fields": ["week_start","week_end"], "optional_fields": [], "unlocks": []},
+      {"slot_key": "item_master",          "required_fields": ["sku"], "optional_fields": ["abc_class","unit_price","category"], "unlocks": []},
+      {"slot_key": "location_master",      "required_fields": ["node_id"], "optional_fields": ["node_type"], "unlocks": ["reallocate_demand"]},
+      {"slot_key": "opening_inventory",    "required_fields": ["sku","node_id","on_hand_qty"], "optional_fields": ["quality_hold_flag"], "unlocks": ["transfer_excess","blocked_inventory","release_blocked_stock","excess_inventory_risk","transfer_out_to_sibling"]},
+      {"slot_key": "demand_plan",          "required_fields": ["sku","node_id","week_start","forecast_qty"], "optional_fields": [], "unlocks": ["projected_stockout","portfolio_inventory_risk","inventory_policy_issue"]},
+      {"slot_key": "supply_plan",          "required_fields": ["sku","node_id","week_start","inbound_qty"], "optional_fields": ["order_id","order_status","delivery_delay_days"], "unlocks": ["late_supply","expedite_inbound","pull_forward_supply","pause_inbound"]},
+      {"slot_key": "sourcing_network",     "required_fields": ["sku","dest_node_id","source_node_id"], "optional_fields": ["lead_time_days"], "unlocks": ["transfer_excess","reroute_intransit","network_imbalance","transfer_out_to_sibling"]},
+      {"slot_key": "inventory_policy",     "required_fields": ["sku","node_id"], "optional_fields": ["safety_stock_qty","reorder_point_qty"], "unlocks": ["projected_stockout","inventory_policy_issue"]},
+      {"slot_key": "promotion_plan",       "required_fields": ["sku","node_id","week_start","uplift_pct"], "optional_fields": ["promo_type"], "unlocks": ["promotion_supply_gap","promo_uplift","phase_promotion","markdown_promo"]},
+      {"slot_key": "in_transit_inventory", "required_fields": ["sku","source_node_id","dest_node_id","qty"], "optional_fields": ["eta_week"], "unlocks": ["reroute_intransit"]},
+      {"slot_key": "supply_delay_signal",  "required_fields": ["sku","source_node_id","delay_days"], "optional_fields": [], "unlocks": ["late_supply"]},
+      {"slot_key": "actual_demand",        "required_fields": ["sku","node_id","week_start","actual_qty"], "optional_fields": [], "unlocks": ["forecast_overstated","substitution_cannibalization"]},
+      {"slot_key": "batch_inventory",      "required_fields": ["sku","node_id","batch_id","batch_qty","expiry_date"], "optional_fields": ["received_date","quality_hold_flag"], "unlocks": ["expiring_batch_risk","shelf_life_shortfall","rsl_below_threshold","cold_chain_break","aged_receipt","accelerated_markdown","donate_or_scrap","expedite_fresh_batch","redirect_to_high_velocity_store"]}
+    ],
+    "calculation_profile": {
+      "projection_engine": "deterministic_beginning_plus_inbound_minus_demand",
+      "safety_stock_method": "parameter_or_z_sigma_sqrt_lt",
+      "shortage_qty_rule": "max_zero_minus_ending",
+      "rounding": {"ending_qty": 2, "shortage_qty": 0},
+      "promo_uplift_application": "add_to_demand_plan_pre_projection",
+      "shelf_life_awareness": {
+        "enabled_when_slot_available": "batch_inventory",
+        "sellable_rule": "batch_qty_with_expiry_after_consumption_week",
+        "waste_rule": "batch_qty_with_expiry_before_end_of_week"
+      }
+    },
+    "library": {
+      "problem_templates": [
+        {"key": "projected_stockout", "display_name": "Projected Stock-out",
+          "requires_slots": ["opening_inventory","demand_plan","supply_plan","inventory_policy"],
+          "rule": {"type": "threshold_on_projection_field", "field": "projected_on_hand_actual_qty", "op": "<", "value": 0},
+          "severity": {"critical_if_weeks_until_breach": 2, "warning_if_weeks_until_breach": 4, "default": "warning"},
+          "aggregation": "first_breach_week_per_sku_location"},
+        {"key": "portfolio_inventory_risk", "display_name": "Portfolio Inventory Risk",
+          "requires_slots": ["opening_inventory","demand_plan","inventory_policy"],
+          "rule": {"type": "threshold_on_projection_field", "field": "projected_on_hand_actual_qty", "op": "<", "value_ref": "projection.safety_stock_qty"},
+          "severity": {"default": "warning"},
+          "aggregation": "any_breach_in_horizon"},
+        {"key": "promotion_supply_gap", "display_name": "Promotion Supply Gap",
+          "requires_slots": ["opening_inventory","demand_plan","supply_plan","promotion_plan"],
+          "rule": {"type": "threshold_on_projection_field_during_window", "field": "projected_on_hand_actual_qty", "op": "<", "value_ref": "projection.reorder_point_qty", "window_source": "promotion_plan"},
+          "severity": {"default": "critical"}},
+        {"key": "excess_inventory_risk", "display_name": "Excess Inventory Risk",
+          "requires_slots": ["opening_inventory","demand_plan","inventory_policy"],
+          "rule": {"type": "sustained_excess_over_cover_ceiling", "cover_weeks_threshold": 12, "consecutive_weeks": 4},
+          "severity": {"default": "warning"},
+          "aggregation": "any_breach_in_horizon"},
+        {"key": "expiring_batch_risk", "display_name": "Expiring Batch Risk",
+          "requires_slots": ["batch_inventory"],
+          "rule": {"type": "batch_expiry_within_window", "rsl_days_threshold": 2, "min_batch_qty": 1},
+          "severity": {"critical_if_rsl_days_le": 1, "warning_if_rsl_days_le": 2, "default": "warning"},
+          "aggregation": "per_batch"},
+        {"key": "shelf_life_shortfall", "display_name": "Shelf-Life Shortfall",
+          "requires_slots": ["batch_inventory","demand_plan"],
+          "rule": {"type": "sellable_below_horizon_demand", "horizon_weeks": 2},
+          "severity": {"default": "critical"},
+          "aggregation": "first_breach_week_per_sku_location"}
+      ],
+      "root_cause_templates": [
+        {"key": "late_supply", "display_name": "Late Supply",
+          "requires_slots": ["supply_plan"],
+          "evidence_query": "orders_with_delivery_delay_days_gt_0_or_eta_after_breach_week",
+          "weight": 0.30},
+        {"key": "network_imbalance", "display_name": "Network Imbalance",
+          "requires_slots": ["opening_inventory","sourcing_network"],
+          "evidence_query": "sibling_node_excess_while_target_below_rop",
+          "weight": 0.25},
+        {"key": "promo_uplift", "display_name": "Promotion Uplift",
+          "requires_slots": ["promotion_plan","demand_plan"],
+          "evidence_query": "promotion_plan_uplift_in_breach_window",
+          "weight": 0.20},
+        {"key": "blocked_inventory", "display_name": "Blocked Inventory",
+          "requires_slots": ["opening_inventory"],
+          "evidence_query": "opening_inventory_quality_hold_or_near_expiry",
+          "weight": 0.15},
+        {"key": "inventory_policy_issue", "display_name": "Inventory Policy Issue",
+          "requires_slots": ["inventory_policy","demand_plan"],
+          "evidence_query": "safety_stock_or_reorder_point_below_minimum_advisable",
+          "weight": 0.10},
+        {"key": "forecast_overstated", "display_name": "Forecast Overstated",
+          "requires_slots": ["demand_plan","actual_demand"],
+          "evidence_query": "actual_to_forecast_ratio_sustained_below_threshold",
+          "weight": 0.35},
+        {"key": "substitution_cannibalization", "display_name": "Substitution / Cannibalization",
+          "requires_slots": ["demand_plan","item_master"],
+          "evidence_query": "sibling_sku_in_category_spiking_while_this_drops",
+          "weight": 0.20},
+        {"key": "rsl_below_threshold", "display_name": "Remaining Shelf Life Below Threshold",
+          "requires_slots": ["batch_inventory"],
+          "evidence_query": "batches_with_rsl_days_le_threshold",
+          "weight": 0.40},
+        {"key": "cold_chain_break", "display_name": "Cold Chain Break",
+          "requires_slots": ["batch_inventory"],
+          "evidence_query": "batches_flagged_quality_hold_or_cold_chain_event",
+          "weight": 0.25},
+        {"key": "aged_receipt", "display_name": "Aged Receipt / Slow Receipt Turn",
+          "requires_slots": ["batch_inventory"],
+          "evidence_query": "batches_with_receipt_to_expiry_span_below_product_shelf_life",
+          "weight": 0.15}
+      ],
+      "resolution_families": [
+        {"key": "transfer_excess", "display_name": "Transfer Excess Inventory",
+          "requires_slots": ["sourcing_network","opening_inventory"],
+          "enumeration_rule": "walk_sourcing_network_siblings_with_excess",
+          "default_qty_rule": "min_shortage_or_sibling_excess",
+          "direction": "inbound"},
+        {"key": "reroute_intransit", "display_name": "Reroute In-transit",
+          "requires_slots": ["in_transit_inventory","sourcing_network"],
+          "enumeration_rule": "in_transit_with_eta_lte_breach_and_reroute_feasible",
+          "default_qty_rule": "min_shortage_or_in_transit_qty",
+          "direction": "inbound"},
+        {"key": "expedite_inbound", "display_name": "Expedite Inbound Order",
+          "requires_slots": ["supply_plan"],
+          "enumeration_rule": "open_orders_with_eta_after_breach_and_expedite_possible",
+          "default_qty_rule": "min_shortage_or_order_qty",
+          "direction": "inbound"},
+        {"key": "reallocate_demand", "display_name": "Reallocate Demand",
+          "requires_slots": ["demand_plan","location_master"],
+          "enumeration_rule": "shift_forecast_between_sibling_nodes_with_same_parent",
+          "default_qty_rule": "shortage_qty",
+          "direction": "inbound"},
+        {"key": "phase_promotion", "display_name": "Phase Promotion",
+          "requires_slots": ["promotion_plan"],
+          "enumeration_rule": "delay_or_taper_promo_uplift_until_week_of_recovery",
+          "default_qty_rule": "shortage_qty",
+          "direction": "demand_shaping"},
+        {"key": "release_blocked_stock", "display_name": "Release Blocked Stock",
+          "requires_slots": ["opening_inventory"],
+          "enumeration_rule": "blocked_stock_with_quality_hold_release_eligible",
+          "default_qty_rule": "min_shortage_or_blocked_qty",
+          "direction": "inbound"},
+        {"key": "pull_forward_supply", "display_name": "Pull Forward Supply",
+          "requires_slots": ["supply_plan"],
+          "enumeration_rule": "flexible_orders_pull_forward_up_to_lead_time",
+          "default_qty_rule": "min_shortage_or_order_qty",
+          "direction": "inbound"},
+        {"key": "markdown_promo", "display_name": "Markdown Promotion",
+          "requires_slots": ["promotion_plan","opening_inventory"],
+          "enumeration_rule": "propose_markdown_uplift_for_overstocked_skus",
+          "default_qty_rule": "excess_qty",
+          "direction": "demand_shaping"},
+        {"key": "transfer_out_to_sibling", "display_name": "Transfer Out to Sibling",
+          "requires_slots": ["sourcing_network","opening_inventory"],
+          "enumeration_rule": "push_excess_to_sibling_below_rop",
+          "default_qty_rule": "min_excess_or_sibling_gap",
+          "direction": "outbound"},
+        {"key": "pause_inbound", "display_name": "Pause / Cancel Inbound",
+          "requires_slots": ["supply_plan","opening_inventory"],
+          "enumeration_rule": "open_orders_on_overstocked_skus",
+          "default_qty_rule": "min_excess_or_order_qty",
+          "direction": "outbound"},
+        {"key": "pre_build_inventory", "display_name": "Pre-build Inventory",
+          "requires_slots": ["supply_plan","promotion_plan"],
+          "enumeration_rule": "propose_earlier_replenishment_before_promo_window",
+          "default_qty_rule": "promo_uplift_qty",
+          "direction": "inbound"},
+        {"key": "accelerated_markdown", "display_name": "Accelerated Markdown (RSL-driven)",
+          "requires_slots": ["batch_inventory"],
+          "enumeration_rule": "propose_markdown_for_batches_with_rsl_below_threshold",
+          "default_qty_rule": "batch_qty",
+          "direction": "demand_shaping"},
+        {"key": "donate_or_scrap", "display_name": "Donate or Scrap (terminal)",
+          "requires_slots": ["batch_inventory"],
+          "enumeration_rule": "terminal_action_for_batches_with_rsl_le_critical",
+          "default_qty_rule": "batch_qty",
+          "direction": "terminal"},
+        {"key": "expedite_fresh_batch", "display_name": "Expedite Fresh Batch (replace aged stock)",
+          "requires_slots": ["batch_inventory","sourcing_network"],
+          "enumeration_rule": "pull_fresh_batch_from_upstream_to_cover_shortfall",
+          "default_qty_rule": "shortfall_qty",
+          "direction": "inbound"},
+        {"key": "redirect_to_high_velocity_store", "display_name": "Redirect to High-Velocity Store",
+          "requires_slots": ["batch_inventory","sourcing_network"],
+          "enumeration_rule": "push_aged_batches_to_fastest_selling_sibling",
+          "default_qty_rule": "batch_qty",
+          "direction": "outbound"}
+      ],
+      "action_templates": {
+        "create_task": {"delivery_mode": "task", "target_system": "servicenow"},
+        "create_recommendation_record": {"delivery_mode": "recommendation_record", "target_system": "db.recommendations"},
+        "create_webhook_payload": {"delivery_mode": "webhook", "schema_ref": "schemas/resolution_webhook.v1.json"},
+        "export_action_csv": {"delivery_mode": "csv", "columns": ["run_id","sku","node_id","family_key","qty","breach_week","recommended_source_node"]}
+      }
+    },
+    "decision_graph": [
+      {"from_problem": "projected_stockout",
+        "compatible_root_causes": ["late_supply","network_imbalance","inventory_policy_issue","blocked_inventory"],
+        "compatible_resolutions": ["transfer_excess","expedite_inbound","reroute_intransit","reallocate_demand","release_blocked_stock","pull_forward_supply"],
+        "default_rank": ["transfer_excess","expedite_inbound","reroute_intransit","reallocate_demand","pull_forward_supply","release_blocked_stock"]},
+      {"from_problem": "portfolio_inventory_risk",
+        "compatible_root_causes": ["late_supply","network_imbalance","inventory_policy_issue"],
+        "compatible_resolutions": ["transfer_excess","expedite_inbound","reallocate_demand"],
+        "default_rank": ["transfer_excess","expedite_inbound","reallocate_demand"]},
+      {"from_problem": "promotion_supply_gap",
+        "compatible_root_causes": ["promo_uplift","late_supply","network_imbalance"],
+        "compatible_resolutions": ["pre_build_inventory","transfer_excess","phase_promotion","expedite_inbound"],
+        "default_rank": ["pre_build_inventory","transfer_excess","phase_promotion","expedite_inbound"]},
+      {"from_problem": "excess_inventory_risk",
+        "compatible_root_causes": ["forecast_overstated","substitution_cannibalization","promo_uplift"],
+        "compatible_resolutions": ["transfer_out_to_sibling","pause_inbound","markdown_promo"],
+        "default_rank": ["transfer_out_to_sibling","pause_inbound","markdown_promo"]},
+      {"from_problem": "expiring_batch_risk",
+        "compatible_root_causes": ["rsl_below_threshold","cold_chain_break","aged_receipt","forecast_overstated"],
+        "compatible_resolutions": ["accelerated_markdown","redirect_to_high_velocity_store","donate_or_scrap","transfer_out_to_sibling"],
+        "default_rank": ["accelerated_markdown","redirect_to_high_velocity_store","transfer_out_to_sibling","donate_or_scrap"]},
+      {"from_problem": "shelf_life_shortfall",
+        "compatible_root_causes": ["rsl_below_threshold","aged_receipt","late_supply","cold_chain_break"],
+        "compatible_resolutions": ["expedite_fresh_batch","transfer_excess","reroute_intransit","accelerated_markdown"],
+        "default_rank": ["expedite_fresh_batch","transfer_excess","reroute_intransit","accelerated_markdown"]}
+    ],
+    "resolution_to_actions": {
+      "transfer_excess":       ["create_task","create_recommendation_record","create_webhook_payload","export_action_csv"],
+      "reroute_intransit":     ["create_task","create_webhook_payload","export_action_csv"],
+      "expedite_inbound":      ["create_task","create_webhook_payload","export_action_csv"],
+      "reallocate_demand":     ["create_recommendation_record","export_action_csv"],
+      "phase_promotion":       ["create_recommendation_record","export_action_csv"],
+      "release_blocked_stock": ["create_task","create_recommendation_record","export_action_csv"],
+      "pull_forward_supply":   ["create_task","create_webhook_payload","export_action_csv"],
+      "markdown_promo":        ["create_recommendation_record","export_action_csv"],
+      "transfer_out_to_sibling":["create_task","create_recommendation_record","create_webhook_payload","export_action_csv"],
+      "pause_inbound":         ["create_task","create_recommendation_record","create_webhook_payload"],
+      "pre_build_inventory":   ["create_task","create_recommendation_record","create_webhook_payload"],
+      "accelerated_markdown":  ["create_recommendation_record","export_action_csv"],
+      "donate_or_scrap":       ["create_task","create_recommendation_record","export_action_csv"],
+      "expedite_fresh_batch":  ["create_task","create_recommendation_record","create_webhook_payload","export_action_csv"],
+      "redirect_to_high_velocity_store": ["create_task","create_recommendation_record","export_action_csv"]
+    },
+    "prioritization": {
+      "normalization": "min_max_per_batch",
+      "tiebreaker": ["earlier_breach_week","lower_sku"],
+      "abc_weight_map": {"A": 1.0, "B": 0.6, "C": 0.3}
+    },
+    "llm_call_sites": {
+      "intent_parse": {
+        "provider_default": "openai",
+        "model_default": "gpt-4.1-mini",
+        "temperature": 0.0,
+        "max_tokens": 400,
+        "system_prompt": "You are the intent parser for an inventory diagnostic agent. Given a planner's natural-language question, return STRICT JSON with keys intent_mode (show|diagnose|solve|simulate|execute|clarify|out_of_scope), scope (object with optional skus[], nodes[], regions[], week_range{start,end}, sort_by, simulation_delta{}), focus (short string), confidence (0..1). Respond with ONLY JSON \u2014 no prose."
+      },
+      "followup_interpret": {
+        "provider_default": "openai",
+        "model_default": "gpt-4.1-mini",
+        "temperature": 0.0,
+        "max_tokens": 250,
+        "system_prompt": "You refine a prior chat turn's scope based on a new user message. Return STRICT JSON with keys: skus[], nodes[], inherit_week_range (bool), week_offsets_prior[]. Respond with ONLY JSON."
+      },
+      "explanation": {
+        "provider_default": "openai",
+        "model_default": "gpt-4.1-mini",
+        "temperature": 0.2,
+        "max_tokens": 900,
+        "system_prompt": "You are a senior supply-chain analyst explaining results of a deterministic inventory diagnostic run to a planner. Open with a 1-2 sentence headline. Name the top 1-3 SKU/node pairs with breach week and shortage. Explain the leading root cause plainly (reference evidence). Recommend the top 1-2 resolutions with specifics (qty, source node, whether simulation confirms it clears the breach, lead time). Close with a concrete next step. Never invent numbers. Max ~250 words. Natural sentences."
+      }
+    },
+    "llm_policy": {
+      "allowed_call_sites": ["intent_parse","followup_interpret","explanation"]
+    },
+    "response_schema": {
+      "structured_keys": ["run_id","intent_mode","scope","problems","root_causes","resolutions","action_plan","capabilities_applied","warnings"],
+      "narrative_max_chars": 1800,
+      "always_include_audit_ref": true
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "type_key": "supply_chain_agent",
+  "display_name": "Supply Chain Agent",
+  "description": "Solves large supply chain questions: stock-outs, promo demand forecasting, excess inventory planning, and replenishment optimization.",
+  "status": "draft",
+  "available_actions": ["query", "analyze_stockouts", "plan_promo_demand", "optimize_inventory", "export_results"],
+  "handler_hint": "rag_chat",
+  "assistant_mode": "search-data-assistant",
+  "template_version": 0,
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "planning_horizon_weeks": {
+        "type": "number",
+        "title": "Planning Horizon (weeks)",
+        "description": "Number of weeks to look ahead for supply chain planning.",
+        "default": 6
+      },
+      "safety_stock_method": {
+        "type": "string",
+        "title": "Safety Stock Method",
+        "description": "Method used to calculate safety stock levels.",
+        "default": "statistical"
+      },
+      "promo_calendar_source": {
+        "type": "string",
+        "title": "Promo Calendar Source Path",
+        "description": "Path to the promotional calendar data file (parquet or CSV)."
+      }
+    }
+  },
+  "default_config": {
+    "planning_horizon_weeks": 6,
+    "safety_stock_method": "statistical"
+  },
+  "default_instance": {
+    "icon": "PrecisionManufacturingOutlined",
+    "button_text": "Supply Chain",
+    "button_style": "icon_and_text",
+    "tooltip_text": "Supply Chain Planning Agent"
+  },
+  "ui_hints": {
+    "sections": [
+      {
+        "title": "Planning Parameters",
+        "fields": ["planning_horizon_weeks", "safety_stock_method", "promo_calendar_source"]
+      }
+    ]
+  }
+}

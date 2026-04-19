@@ -5,3 +5,17 @@ SNACK-003,Savory Crunch Mix 12ct,CrunchLab,Regional,B,Ambient,CaliSnacks,West re
 GUM-004,Mint Gum Multipack,FreshMint,Core,B,Ambient,FreshMint,Stable core gum multipack used for reorder and cadence governance examples.
 CEREAL-005,Granola Crunch Family Pack,Morning Mill,Bulk,C,Ambient,MorningMill,Slow moving family pack showing excess inventory and rebalance suppression logic.
 WATER-006,Electrolyte Water 6pk,HydraGo,Critical,A,Chilled,HydraCo,Critical hydration SKU demonstrating no-safe-action escalation and safety stock correction.
+MILK-001,2% Milk Gallon,DairyFresh,Perishable-Dairy,A,Refrigerated,DAIRY-FRESH,Daily-turnover dairy staple with tight shelf life and short replenishment cycle.
+CHEESE-002,Cheddar Block 8oz,DairyFresh,Perishable-Dairy,A,Refrigerated,DAIRY-FRESH,High-velocity refrigerated cheese block used in promo and shelf-life management scenarios.
+BUTTER-003,Salted Butter 1lb,DairyFresh,Perishable-Dairy,B,Refrigerated,DAIRY-FRESH,Refrigerated dairy item with seasonal demand swings around baking holidays.
+YOGURT-004,Greek Yogurt 32oz,GreekStyle,Perishable-Dairy,B,Refrigerated,YOGUR-CO,Family-pack yogurt with steady demand and short shelf window driving frequent reorders.
+EGGS-005,Large Brown Eggs 12ct,FarmDirect,Perishable,A,Refrigerated,FARM-DIRECT,Critical farm-fresh egg dozen with avian-supply volatility risk and store-level promotion lift.
+PEN-101,Gel Pen 12-pack,WriteSmart,Stationery,C,Ambient,OFFICEMAX-CO,Back-to-school staple with August demand spike and stable baseline thereafter.
+NB-102,Spiral Notebook A5,PaperWorks,Stationery,C,Ambient,OFFICEMAX-CO,General-purpose notebook with predictable institutional reorder cadence.
+STAP-103,Desktop Stapler,OfficeKit,Stationery,C,Ambient,OFFICEMAX-CO,Durable office hardware with low velocity and long replacement cycle.
+MARKER-104,Permanent Marker 4-pack,InkPro,Stationery,C,Ambient,OFFICEMAX-CO,Multipack marker with steady office and craft-store demand.
+PS5-201,PlayStation 5 Console,Sony,Gaming,A,Ambient,SONY-DIST,High-ticket gaming console with launch and holiday demand spikes and ABC-A revenue impact.
+XBOX-202,Xbox Series X Console,Microsoft,Gaming,A,Ambient,MS-DIST,Premium console with seasonal demand and tight allocation during release windows.
+CTRL-203,Wireless Controller,Sony,Gaming,B,Ambient,SONY-DIST,Accessory attach SKU sold alongside consoles with promotional bundle exposure.
+HDST-204,Gaming Headset,Logitech,Gaming,B,Ambient,LOGI-DIST,Mid-tier gaming peripheral with esports-driven demand and frequent SKU refresh.
+SWITCH-205,Nintendo Switch OLED,Nintendo,Gaming,A,Ambient,NINT-DIST,Family-friendly console with sustained demand and limited supplier allocation.

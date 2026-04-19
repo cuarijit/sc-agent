@@ -1,0 +1,9 @@
+{
+  "slot_key": "inventory_policy",
+  "display_name": "Inventory Policy",
+  "description": "Per sku_location inventory control parameters (safety stock, reorder point, service level). Consumed by the projection engine and inventory_policy_issue root cause.",
+  "is_required": true,
+  "required_fields": ["sku", "node_id"],
+  "optional_fields": ["safety_stock_qty", "reorder_point_qty", "service_level_target", "lead_time_days"],
+  "grain_hint": "sku_location"
+}

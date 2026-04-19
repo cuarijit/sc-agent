@@ -1,0 +1,13 @@
+{
+  "slot_key": "in_transit_inventory",
+  "display_name": "In-transit Inventory",
+  "description": "Inventory currently in motion between nodes with an ETA. When bound, enables the reroute_intransit resolution family. Can be derived from supply_plan rows where order_status IN ('in_transit','shipped').",
+  "is_required": false,
+  "required_fields": ["sku", "source_node_id", "dest_node_id", "eta_week", "qty"],
+  "optional_fields": ["order_id", "reroute_feasible_flag"],
+  "grain_hint": "sku_location_week",
+  "derivation_hint": {
+    "available_source": "replenishment_order_details",
+    "notes": "Derivable from ReplenishmentOrderDetail filtered to order_status IN ('in_transit','shipped'). No new table required."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "slot_key": "demand_plan",
+  "display_name": "Demand Plan",
+  "description": "Weekly forecast quantity per sku_location_week. Consumed by the deterministic projection engine.",
+  "is_required": true,
+  "required_fields": ["sku", "node_id", "week_start", "forecast_qty"],
+  "optional_fields": ["demand_std_dev", "demand_type"],
+  "grain_hint": "sku_location_week"
+}

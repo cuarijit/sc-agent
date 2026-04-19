@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { Box, Button, Chip, CssBaseline, Divider, Drawer, Stack, ThemeProvider, Typography, createTheme } from "@mui/material";
+import { Box, Button, Chip, Divider, Drawer, Stack, Typography } from "@mui/material";
 import type {} from "@mui/x-data-grid/themeAugmentation";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import LeftNav from "./LeftNav";
 import TopHeader from "./TopHeader";
-import GlobalFilterBar from "./GlobalFilterBar";
 import ConfigDialog from "./ConfigDialog";
+import PageHelpDrawer from "../help/PageHelpDrawer";
 import { fetchAutonomousRuns, fetchLlmOptions, runAutonomous } from "../../services/api";
 import type { AutonomousResponse, LlmOptionsResponse, UiConfig } from "../../types";
 import type { GlobalFilters } from "../../types/filters";
@@ -68,16 +68,21 @@ function mapAutonomousRunStatusToInventoryPreset(status: string): "complete" | "
   return null;
 }
 
-export default function AppShellLayout() {
+interface AppShellLayoutProps {
+  themeMode: "light" | "dark";
+  onToggleThemeMode: () => void;
+}
+
+export default function AppShellLayout({ themeMode, onToggleThemeMode }: AppShellLayoutProps) {
   const navigate = useNavigate();
   const COLLAPSED_NAV_WIDTH = 46;
   const EXPANDED_NAV_WIDTH = 195;
   const queryClient = useQueryClient();
-  const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
   const [filters, setFilters] = useState<GlobalFilters>(defaultFilters);
   const [collapsed, setCollapsed] = useState(true);
   const [configOpen, setConfigOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [llmApiKeys, setLlmApiKeys] = useState<Record<string, string>>({});
   const [config, setConfig] = useState<UiConfig>(() => {
     const raw = localStorage.getItem("asc_ui_config");
@@ -114,222 +119,12 @@ export default function AppShellLayout() {
       await queryClient.invalidateQueries({ queryKey: ["demo-alerts"] });
     },
   });
-  const theme = useMemo(
-    () => {
-      const isLight = themeMode === "light";
-      return createTheme({
-        palette: {
-          mode: themeMode,
-          primary: {
-            main: isLight ? "#2679A8" : "#519BC5",
-            light: "#7AC6E9",
-            dark: "#16608B",
-            contrastText: "#ffffff",
-          },
-          secondary: {
-            main: isLight ? "#883DCF" : "#A064D9",
-            light: "#B88BE2",
-            dark: "#662E9B",
-            contrastText: "#ffffff",
-          },
-          background: {
-            default: isLight ? "#f1f5fa" : "#080c14",
-            paper: isLight ? "#ffffff" : "#0d1320",
-          },
-          text: {
-            primary: isLight ? "#0B4A6F" : "#D9F3FF",
-            secondary: isLight ? "#4a6680" : "#7AC6E9",
-          },
-          info: { main: isLight ? "#2679A8" : "#519BC5" },
-          success: { main: "#059669" },
-          warning: { main: "#d97706" },
-          error: { main: "#dc2626" },
-        },
-        shape: { borderRadius: 4 },
-        typography: {
-          fontSize: 11,
-          fontFamily: '"IBM Plex Sans", "Nunito Sans", "Segoe UI", sans-serif',
-          h5: { fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif', fontWeight: 700, letterSpacing: "-0.01em" },
-          h6: { fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif', fontWeight: 700, letterSpacing: "-0.01em" },
-          subtitle1: { fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif', fontWeight: 700, fontSize: "14px", lineHeight: "20px" },
-          subtitle2: { fontSize: "11px", lineHeight: "16px" },
-          body1: { fontSize: "11px", lineHeight: "16px" },
-          body2: { fontSize: "11px", lineHeight: "16px" },
-          button: { textTransform: "none", fontWeight: 500 },
-          caption: { fontSize: "11px", lineHeight: "16px" },
-        },
-        components: {
-          MuiPaper: {
-            styleOverrides: {
-              root: {
-                borderRadius: 4,
-                borderColor: isLight ? "#cdd8e4" : "#1b2a40",
-              },
-            },
-          },
-          MuiCard: {
-            styleOverrides: { root: { fontSize: 14 } },
-          },
-          MuiCardContent: {
-            styleOverrides: {
-              root: {
-                fontSize: 14,
-                "& .MuiTypography-root": { fontSize: 14 },
-              },
-            },
-          },
-          MuiButton: {
-            defaultProps: { size: "small", disableElevation: true },
-            styleOverrides: {
-              root: {
-                borderRadius: 4,
-                minHeight: 28,
-                padding: "4px 10px",
-                fontSize: 11,
-                lineHeight: 1.2,
-                gap: 6,
-              },
-              outlined: {
-                borderColor: "#519BC5",
-                color: isLight ? "#16608B" : "#7AC6E9",
-              },
-              contained: {
-                boxShadow: "none",
-                background: isLight
-                  ? "linear-gradient(135deg, #2679A8 0%, #16608B 100%)"
-                  : "linear-gradient(135deg, #519BC5 0%, #2679A8 100%)",
-                "&:hover": {
-                  background: isLight
-                    ? "linear-gradient(135deg, #16608B 0%, #0B4A6F 100%)"
-                    : "linear-gradient(135deg, #7AC6E9 0%, #519BC5 100%)",
-                },
-              },
-            },
-          },
-          MuiIconButton: {
-            defaultProps: { size: "small" },
-            styleOverrides: { root: { width: 28, height: 28, borderRadius: 6 } },
-          },
-          MuiTextField: {
-            defaultProps: { size: "small", variant: "outlined" },
-          },
-          MuiOutlinedInput: {
-            styleOverrides: {
-              root: { minHeight: 32, borderRadius: 4, fontSize: 11 },
-              input: { padding: "7px 10px" },
-            },
-          },
-          MuiInputLabel: {
-            styleOverrides: { root: { fontSize: 11 } },
-          },
-          MuiFormLabel: {
-            styleOverrides: { root: { fontSize: 11 } },
-          },
-          MuiSelect: {
-            defaultProps: { size: "small" },
-          },
-          MuiMenuItem: {
-            styleOverrides: { root: { minHeight: 30, fontSize: 11 } },
-          },
-          MuiAutocomplete: {
-            defaultProps: { size: "small" },
-          },
-          MuiSwitch: {
-            defaultProps: { size: "small" },
-            styleOverrides: {
-              root: { padding: 6 },
-              switchBase: {
-                "&.Mui-checked": {
-                  color: isLight ? "#2679A8" : "#519BC5",
-                },
-                "&.Mui-checked + .MuiSwitch-track": {
-                  backgroundColor: isLight ? "#7AC6E9" : "#2679A8",
-                },
-              },
-            },
-          },
-          MuiChip: {
-            defaultProps: { size: "small" },
-            styleOverrides: { root: { height: 22, fontSize: 11 } },
-          },
-          MuiTabs: {
-            styleOverrides: {
-              root: { minHeight: 30 },
-              indicator: {
-                height: 2,
-                background: "linear-gradient(90deg, #2679A8 0%, #883DCF 100%)",
-              },
-            },
-          },
-          MuiTab: {
-            defaultProps: { disableRipple: true },
-            styleOverrides: {
-              root: {
-                minHeight: 30,
-                padding: "5px 10px",
-                fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif',
-                fontSize: 12,
-                fontWeight: 600,
-                "&.Mui-selected": {
-                  color: isLight ? "#16608B" : "#B5E7FD",
-                },
-              },
-            },
-          },
-          MuiDialogTitle: {
-            styleOverrides: {
-              root: {
-                padding: "10px 14px",
-                fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif',
-                fontSize: 15,
-                fontWeight: 700,
-                letterSpacing: "-0.01em",
-                color: isLight ? "#0B4A6F" : "#D9F3FF",
-              },
-            },
-          },
-          MuiDialogContent: {
-            styleOverrides: { root: { padding: "10px 14px", fontSize: 11 } },
-          },
-          MuiDialogActions: {
-            styleOverrides: { root: { padding: "8px 12px", gap: 6, fontSize: 11 } },
-          },
-          MuiTableCell: {
-            styleOverrides: {
-              root: {
-                borderBottom: `1px solid ${isLight ? "rgba(38,121,168,0.10)" : "rgba(81,155,197,0.10)"}`,
-                fontSize: "11px",
-              },
-              head: {
-                fontWeight: 600,
-                color: isLight ? "#16608B" : "#7AC6E9",
-                backgroundColor: isLight ? "#f8fcff" : "rgba(11,74,111,0.12)",
-              },
-            },
-          },
-          MuiDataGrid: {
-            styleOverrides: {
-              root: { borderRadius: 4 },
-              columnHeaders: { minHeight: "36px !important" },
-              columnHeader: { minHeight: "36px !important" },
-              row: { maxHeight: "30px !important" },
-            },
-          },
-        },
-      });
-    },
-    [themeMode],
-  );
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", themeMode);
-  }, [themeMode]);
 
   useEffect(() => {
     localStorage.setItem("asc_ui_config", JSON.stringify(config));
   }, [config]);
 
-  const showGlobalFilterBar = true;
+  // showGlobalFilterBar removed — GlobalFilterBar now always renders as the page header strip
   const infoRuns = useMemo<InfoRun[]>(() => {
     const liveRuns = (autonomousRuns?.runs ?? []).slice(0, 4).map((run) => ({
       id: run.run_id,
@@ -397,124 +192,139 @@ export default function AppShellLayout() {
   }, [autonomousRuns?.runs, autonomousTriggerMutation.isPending]);
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Box className="app-shell">
-        <Box className="ambient-shape ambient-shape-a" />
-        <Box className="ambient-shape ambient-shape-b" />
-        <TopHeader
-          themeMode={themeMode}
-          onToggleThemeMode={() => setThemeMode((prev) => (prev === "light" ? "dark" : "light"))}
-          onOpenSettings={() => setConfigOpen(true)}
-          onOpenInformation={() => setInfoOpen(true)}
-        />
-        {/* Spacer so content starts below the fixed brand strip */}
-        <Box aria-hidden sx={{ flexShrink: 0, height: { xs: 34, md: 38 }, minHeight: { xs: 34, md: 38 } }} />
-        <Box className="app-layout">
-          <Box className="side-nav-shell" sx={{ width: collapsed ? COLLAPSED_NAV_WIDTH : EXPANDED_NAV_WIDTH, minWidth: collapsed ? COLLAPSED_NAV_WIDTH : EXPANDED_NAV_WIDTH }}>
-            <LeftNav collapsed={collapsed} onToggleCollapsed={() => setCollapsed((prev) => !prev)} />
-          </Box>
-          <Box className="main-pane">
-            {showGlobalFilterBar ? <GlobalFilterBar filters={filters} setFilters={setFilters} config={config} openAiApiKey={openAiApiKey} /> : null}
-            <Box className="main-content-wrap" sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <Outlet context={{ filters, setFilters, config, setConfig, openAiApiKey, setOpenAiApiKey } satisfies ShellContextValue} />
-            </Box>
+    <Box className="app-shell">
+      <Box className="ambient-shape ambient-shape-a" />
+      <Box className="ambient-shape ambient-shape-b" />
+      <TopHeader
+        themeMode={themeMode}
+        onToggleThemeMode={onToggleThemeMode}
+        onOpenSettings={() => setConfigOpen(true)}
+        onOpenInformation={() => setInfoOpen(true)}
+        onOpenHelp={() => setHelpOpen(true)}
+      />
+      {/* Spacer matches puls8's 48px brand strip */}
+      <Box aria-hidden sx={{ flexShrink: 0, height: { xs: 44, md: 48 }, minHeight: { xs: 44, md: 48 } }} />
+      <Box className="app-layout">
+        <Box
+          className="side-nav-shell"
+          sx={{
+            width: collapsed ? COLLAPSED_NAV_WIDTH : EXPANDED_NAV_WIDTH,
+            minWidth: collapsed ? COLLAPSED_NAV_WIDTH : EXPANDED_NAV_WIDTH,
+          }}
+        >
+          <LeftNav collapsed={collapsed} onToggleCollapsed={() => setCollapsed((prev) => !prev)} />
+        </Box>
+        <Box className="main-pane" sx={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, overflow: "hidden" }}>
+          {/* Page content — main-pane is the height container; pages own their scroll.
+              Filter + Agent buttons live inside each PageShell header (right side,
+              vertically centered with the title) — see PageLayout.tsx. */}
+          <Box
+            className="main-content-wrap"
+            sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}
+          >
+            <Outlet context={{ filters, setFilters, config, setConfig, openAiApiKey, setOpenAiApiKey } satisfies ShellContextValue} />
           </Box>
         </Box>
-        <ConfigDialog
-          open={configOpen}
-          config={config}
-          llmOptions={llmOptions ?? null}
-          llmApiKeys={llmApiKeys}
-          onLlmApiKeyChange={(provider, value) => {
-            setLlmApiKeys((prev) => ({ ...prev, [provider]: value }));
-          }}
-          onClose={() => setConfigOpen(false)}
-          onSave={setConfig}
-        />
-        <Drawer anchor="right" open={infoOpen} onClose={() => setInfoOpen(false)} PaperProps={{ sx: { width: { xs: "92vw", sm: 460 }, p: 2 } }}>
-          <Stack spacing={1.25} sx={{ height: "100%" }}>
-            <Typography variant="h6">Agent information desk</Typography>
-            <Typography variant="caption" color="text.secondary">
-              Autonomous agent progress: run history, status (completed, needs guidance, running), and actions. Click a run to open the Inventory Diagnostic Agent on the Network page.
-            </Typography>
-            <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={() => autonomousTriggerMutation.mutate()}
-                disabled={autonomousTriggerMutation.isPending}
-              >
-                {autonomousTriggerMutation.isPending ? "Triggering..." : "Trigger autonomous execution"}
-              </Button>
-              <Chip
-                size="small"
-                color={autonomousTriggerMutation.isPending ? "warning" : "success"}
-                label={autonomousTriggerMutation.isPending ? "One run currently running" : "Ready"}
-              />
-            </Stack>
-            <Divider />
-            <Box sx={{ overflowY: "auto", pr: 0.5 }}>
-              <Stack spacing={1}>
-                {infoRuns.map((run) => (
-                  <Box
-                    key={run.id}
-                    onClick={() => {
-                      if (run.status === "running") return;
-                      const preset = mapAutonomousRunStatusToInventoryPreset(String(run.status));
-                      if (preset) {
-                        navigate(`/network?openInventoryAgent=1&inventoryAgentPreset=${preset}`);
-                      }
-                      setInfoOpen(false);
-                    }}
-                    sx={{
-                      border: "1px solid",
-                      borderColor: "divider",
-                      borderRadius: 1,
-                      p: 1,
-                      cursor: run.status === "running" ? "not-allowed" : "pointer",
-                      opacity: run.status === "running" ? 0.7 : 1,
-                    }}
-                  >
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="subtitle2">{run.id}</Typography>
-                      <Chip
-                        size="small"
-                        color={
-                          run.status === "completed"
-                            ? "success"
-                            : run.status === "needs_user_guidance"
-                              ? "warning"
-                              : "info"
-                        }
-                        label={run.status.replace(/_/g, " ")}
-                      />
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.4 }}>
-                      Alert: {run.alert} | Actions: {run.actions} | Qty: {run.qty.toLocaleString()} | Cost: ${run.cost.toLocaleString()}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.35 }}>
-                      {run.note}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.2 }}>
-                      Time: {run.time}
-                    </Typography>
-                    {run.status === "running" ? (
-                      <Typography variant="caption" color="warning.main" sx={{ display: "block", mt: 0.35 }}>
-                        Run is in progress. Details open after completion.
-                      </Typography>
-                    ) : (
-                      <Typography variant="caption" color="primary.main" sx={{ display: "block", mt: 0.35 }}>
-                        Click to open Inventory Diagnostic Agent on the Network page (completed runs show full workflow; guided runs pause at source selection).
-                      </Typography>
-                    )}
-                  </Box>
-                ))}
-              </Stack>
-            </Box>
-          </Stack>
-        </Drawer>
       </Box>
-    </ThemeProvider>
+      <Box className="app-footer">
+        <Typography className="app-footer-text">
+          All content copyright &copy;2026 Demand Chain AI Inc. All rights reserved. Puls8&trade; Solutions is a wholly owned subsidiary of Demand Chain AI, Inc. No reproduction, transmission or display is permitted without the written permission of Demand Chain AI Inc.
+        </Typography>
+      </Box>
+      <PageHelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <ConfigDialog
+        open={configOpen}
+        config={config}
+        llmOptions={llmOptions ?? null}
+        llmApiKeys={llmApiKeys}
+        onLlmApiKeyChange={(provider, value) => {
+          setLlmApiKeys((prev) => ({ ...prev, [provider]: value }));
+        }}
+        onClose={() => setConfigOpen(false)}
+        onSave={setConfig}
+      />
+      <Drawer anchor="right" open={infoOpen} onClose={() => setInfoOpen(false)} PaperProps={{ sx: { width: { xs: "92vw", sm: 460 }, p: 2 } }}>
+        <Stack spacing={1.25} sx={{ height: "100%" }}>
+          <Typography variant="h6">Agent information desk</Typography>
+          <Typography variant="caption" color="text.secondary">
+            Autonomous agent progress: run history, status (completed, needs guidance, running), and actions. Click a run to open the Inventory Diagnostic Agent on the Network page.
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => autonomousTriggerMutation.mutate()}
+              disabled={autonomousTriggerMutation.isPending}
+            >
+              {autonomousTriggerMutation.isPending ? "Triggering..." : "Trigger autonomous execution"}
+            </Button>
+            <Chip
+              size="small"
+              color={autonomousTriggerMutation.isPending ? "warning" : "success"}
+              label={autonomousTriggerMutation.isPending ? "One run currently running" : "Ready"}
+            />
+          </Stack>
+          <Divider />
+          <Box sx={{ overflowY: "auto", pr: 0.5 }}>
+            <Stack spacing={1}>
+              {infoRuns.map((run) => (
+                <Box
+                  key={run.id}
+                  onClick={() => {
+                    if (run.status === "running") return;
+                    const preset = mapAutonomousRunStatusToInventoryPreset(String(run.status));
+                    if (preset) {
+                      navigate(`/network?openInventoryAgent=1&inventoryAgentPreset=${preset}`);
+                    }
+                    setInfoOpen(false);
+                  }}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 1,
+                    p: 1,
+                    cursor: run.status === "running" ? "not-allowed" : "pointer",
+                    opacity: run.status === "running" ? 0.7 : 1,
+                  }}
+                >
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="subtitle2">{run.id}</Typography>
+                    <Chip
+                      size="small"
+                      color={
+                        run.status === "completed"
+                          ? "success"
+                          : run.status === "needs_user_guidance"
+                            ? "warning"
+                            : "info"
+                      }
+                      label={run.status.replace(/_/g, " ")}
+                    />
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.4 }}>
+                    Alert: {run.alert} | Actions: {run.actions} | Qty: {run.qty.toLocaleString()} | Cost: ${run.cost.toLocaleString()}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.35 }}>
+                    {run.note}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.2 }}>
+                    Time: {run.time}
+                  </Typography>
+                  {run.status === "running" ? (
+                    <Typography variant="caption" color="warning.main" sx={{ display: "block", mt: 0.35 }}>
+                      Run is in progress. Details open after completion.
+                    </Typography>
+                  ) : (
+                    <Typography variant="caption" color="primary.main" sx={{ display: "block", mt: 0.35 }}>
+                      Click to open Inventory Diagnostic Agent on the Network page (completed runs show full workflow; guided runs pause at source selection).
+                    </Typography>
+                  )}
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        </Stack>
+      </Drawer>
+    </Box>
   );
 }

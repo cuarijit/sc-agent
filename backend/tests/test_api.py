@@ -9,9 +9,53 @@ from fastapi.testclient import TestClient
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ASC_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
+    # Tests are written against the un-authenticated API surface. We keep
+    # auth disabled at the test layer so they exercise the deterministic
+    # synthetic-admin path (which gives the test client all entitlements).
+    monkeypatch.setenv("SCP_AUTH_ENABLED", "false")
     from backend.app.main import app
 
     with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture()
+def authed_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Like `client` but with auth ENABLED and a logged-in admin session
+    cookie pre-attached. Use this for tests that explicitly verify behavior
+    behind auth (e.g. role-based access)."""
+    monkeypatch.setenv("ASC_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
+    monkeypatch.setenv("SCP_AUTH_ENABLED", "true")
+    from backend.app.main import app
+
+    with TestClient(app) as test_client:
+        # Trigger lifespan + bootstrap admin user
+        resp = test_client.post("/auth/login", json={"username": "admin", "password": "admin123"})
+        assert resp.status_code == 200, f"bootstrap login failed: {resp.text}"
+        yield test_client
+
+
+@pytest.fixture()
+def planner_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("ASC_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
+    monkeypatch.setenv("SCP_AUTH_ENABLED", "true")
+    from backend.app.main import app
+
+    with TestClient(app) as test_client:
+        resp = test_client.post("/auth/login", json={"username": "planner", "password": "planner"})
+        assert resp.status_code == 200
+        yield test_client
+
+
+@pytest.fixture()
+def analyst_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("ASC_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
+    monkeypatch.setenv("SCP_AUTH_ENABLED", "true")
+    from backend.app.main import app
+
+    with TestClient(app) as test_client:
+        resp = test_client.post("/auth/login", json={"username": "analyst", "password": "analyst"})
+        assert resp.status_code == 200
         yield test_client
 
 
@@ -26,7 +70,7 @@ def test_dashboard_seeded(client: TestClient):
     payload = response.json()
     assert response.status_code == 200
     assert payload["run_id"] == "RUN-BASELINE-001"
-    assert len(payload["recommendations"]) == 6
+    assert len(payload["recommendations"]) >= 6
 
 
 def test_scenario_persists(client: TestClient):

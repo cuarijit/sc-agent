@@ -1,0 +1,316 @@
+{
+  "type_key": "inventory_allocation_agent",
+  "display_name": "Inventory Allocation & Distribution Agent",
+  "description": "Agentic decisioning for store allocation, distribution routing, and waste minimization across a perishable supply chain. Detects allocation gaps vs fair-share, Iftar-window delivery risk, and expiry-risk clusters; recommends rebalance / reroute / markdown / transfer / donate actions at batch + route grain.",
+  "status": "active",
+  "available_actions": ["show", "analyse", "solve", "simulate", "execute", "export_action_csv"],
+  "handler_hint": "inventory_allocation",
+  "assistant_mode": "inventory-allocation",
+  "template_version": 2,
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "allocation_horizon_hours": {
+        "type": "number",
+        "title": "Allocation Horizon (hours)",
+        "description": "How far ahead allocation and routing decisions project.",
+        "default": 24,
+        "minimum": 6,
+        "maximum": 72,
+        "x-field": "slider"
+      },
+      "rsl_days_critical": {
+        "type": "number",
+        "title": "Critical RSL Threshold (days)",
+        "description": "Batches at or below this RSL trigger waste-management cascade.",
+        "default": 1,
+        "minimum": 0,
+        "maximum": 7
+      }
+    }
+  },
+  "default_config": {
+    "allocation_horizon_hours": 24,
+    "rsl_days_critical": 1,
+    "rsl_days_warning": 2,
+    "iftar_buffer_minutes": 15,
+    "enabled_intents": ["show", "analyse", "solve", "simulate", "execute"],
+    "enabled_library": {
+      "problem_templates": [
+        "allocation_gap",
+        "route_delivery_risk",
+        "iftar_window_miss_risk",
+        "expiry_risk_cluster",
+        "store_fair_share_deviation"
+      ],
+      "root_cause_templates": [
+        "route_capacity_breach",
+        "prayer_window_conflict",
+        "rsl_below_threshold",
+        "store_velocity_mismatch",
+        "cold_chain_break"
+      ],
+      "resolution_families": [
+        "rebalance_allocation",
+        "reroute_delivery",
+        "inter_store_transfer",
+        "markdown_local",
+        "scrap_donate",
+        "redirect_to_high_velocity_store",
+        "swap_vehicle_capacity"
+      ],
+      "action_templates": [
+        "create_task",
+        "create_recommendation_record",
+        "create_webhook_payload",
+        "export_action_csv"
+      ]
+    },
+    "prioritization_weights": {
+      "revenue_at_risk": 0.20,
+      "delivery_window_fit": 0.25,
+      "expiry_risk": 0.30,
+      "customer_facing_flag": 0.15,
+      "store_velocity_score": 0.10
+    },
+    "llm_policy": {
+      "intent_parse": {"provider": "openai", "model": "gpt-4.1-mini", "temperature": 0, "max_tokens": 400},
+      "followup_interpret": {"provider": "openai", "model": "gpt-4.1-mini", "temperature": 0, "max_tokens": 250},
+      "explanation": {"provider": "openai", "model": "gpt-4.1-mini", "temperature": 0.2, "max_tokens": 900}
+    },
+    "execute_mode": {
+      "dispatch": false,
+      "delivery_mode": "recommendation_record",
+      "webhook_url": null,
+      "csv_path": "/tmp/inventory_allocation_actions"
+    },
+    "action_permissions_per_intent": {
+      "show": [],
+      "analyse": [],
+      "solve": ["create_recommendation_record", "create_task", "export_action_csv"],
+      "simulate": [],
+      "execute": ["create_webhook_payload", "create_task", "create_recommendation_record", "export_action_csv"]
+    },
+    "ui_prompts": {
+      "show": [
+        {"id": "show_iftar_risk", "label": "Iftar delivery risk", "text": "Which deliveries today are at risk of missing their Iftar window?"},
+        {"id": "show_expiring_24h", "label": "Expiring in 24h", "text": "Which batches will expire in the next 24 hours across the network?"},
+        {"id": "show_velocity_vs_alloc", "label": "Velocity vs allocation", "text": "Show store-level velocity vs planned allocation for yogurt today."}
+      ],
+      "analyse": [
+        {"id": "analyse_fairshare", "label": "Fair-share deviation", "text": "Where is allocation deviating from fair-share based on current velocity and RSL?"},
+        {"id": "analyse_waste_48h", "label": "Predicted waste 48h", "text": "How much predicted waste is on the books for the next 48 hours, and where?"},
+        {"id": "analyse_route_tightness", "label": "Tight Iftar routes", "text": "Which routes are chronically tight vs the Iftar window this Ramadan?"}
+      ],
+      "solve": [
+        {"id": "solve_markdown_1d", "label": "Plan for ≤1d RSL", "text": "Propose a markdown, transfer, or donation plan for all batches with RSL ≤ 1 day."},
+        {"id": "solve_ramadan_juice", "label": "Allocate juice for Day 18", "text": "Ramadan Day 18 — allocate 4 pallets of mango juice across the 8 stores."},
+        {"id": "solve_reroute_iftar", "label": "Reroute to save Iftar", "text": "Re-route today's Iftar-window deliveries so no store misses its window."}
+      ],
+      "simulate": [
+        {"id": "sim_markdown_25", "label": "Markdown 25% on aged", "text": "If I apply a 25% markdown on aged cheese at STORE-MALL-01, how much waste is avoided?"},
+        {"id": "sim_velocity_spike", "label": "East velocity 2×", "text": "If STORE-EAST velocity doubles for 3 hours, re-allocate yogurt — where does STORE-MALL-01 end up?"},
+        {"id": "sim_route_delay", "label": "Route-03 delayed 45m", "text": "If ROUTE-03 is delayed 45 min, which stops must be swapped to keep the Iftar window?"}
+      ]
+    },
+    "capability_overrides": {
+      "force_disable": [],
+      "force_enable": []
+    }
+  },
+  "default_instance": {
+    "icon": "LocalShippingOutlined",
+    "button_text": "Allocation & Distribution",
+    "button_style": "icon_and_text",
+    "tooltip_text": "Inventory Allocation & Distribution Agent"
+  },
+  "ui_hints": {
+    "sections": [
+      {"title": "Horizon & thresholds", "fields": ["allocation_horizon_hours", "rsl_days_critical"]}
+    ]
+  },
+  "behavior": {
+    "scope_detection": {
+      "db_signal_keywords": [
+        "allocation", "allocate", "route", "delivery", "iftar", "window", "store",
+        "waste", "expiry", "markdown", "donate", "scrap", "transfer", "velocity",
+        "pallet", "batch", "fair share", "fair-share", "ramadan"
+      ],
+      "out_of_scope_keywords": [
+        "joke", "poem", "story", "weather", "news", "movie", "song", "translate"
+      ],
+      "out_of_scope_response": "I can only help with allocation, distribution routing, and waste management questions."
+    },
+    "intents": [
+      {"id": "show",     "display_name": "Show",     "description": "Read-only listing of allocation / routing / waste problems",
+        "pipeline_stages": ["followup","intent","scope","capability","detect","prioritize","compose","audit"]},
+      {"id": "analyse",  "display_name": "Analyse",  "description": "Show problems + root-cause evidence (fair-share deviation, velocity mismatch, cold-chain)",
+        "pipeline_stages": ["followup","intent","scope","capability","detect","prioritize","rca","compose","audit"]},
+      {"id": "solve",    "display_name": "Solve",    "description": "Full recommendation: problems + RCs + routing/waste resolutions",
+        "pipeline_stages": ["followup","intent","scope","capability","detect","prioritize","rca","resolve","simulate","map_actions","compose","audit"]},
+      {"id": "simulate", "display_name": "Simulate", "description": "Apply a what-if (markdown %, velocity spike, route delay)",
+        "pipeline_stages": ["followup","intent","scope","capability","detect","prioritize","rca","resolve","simulate","compose","audit"]},
+      {"id": "execute",  "display_name": "Execute",  "description": "Promote resolutions to queued / dispatched",
+        "pipeline_stages": ["followup","intent","scope","capability","detect","prioritize","rca","resolve","simulate","map_actions","compose","audit"]}
+    ],
+    "semantic_slots": {
+      "required": ["item_master", "location_master", "opening_inventory", "sourcing_network"],
+      "optional": ["batch_inventory", "delivery_routes", "store_velocity", "demand_plan", "actual_demand"]
+    },
+    "slot_catalog": [
+      {"slot_key": "item_master",      "required_fields": ["sku"], "optional_fields": ["abc_class","unit_price","category"], "unlocks": []},
+      {"slot_key": "location_master",  "required_fields": ["node_id"], "optional_fields": ["node_type"], "unlocks": []},
+      {"slot_key": "opening_inventory","required_fields": ["sku","node_id","on_hand_qty"], "optional_fields": ["quality_hold_flag"], "unlocks": ["allocation_gap","store_fair_share_deviation"]},
+      {"slot_key": "sourcing_network", "required_fields": ["sku","dest_node_id","source_node_id"], "optional_fields": [], "unlocks": ["inter_store_transfer","rebalance_allocation"]},
+      {"slot_key": "batch_inventory",  "required_fields": ["sku","node_id","batch_id","batch_qty","expiry_date"], "optional_fields": ["received_date","quality_hold_flag"], "unlocks": ["expiry_risk_cluster","rsl_below_threshold","cold_chain_break","markdown_local","scrap_donate","redirect_to_high_velocity_store"]},
+      {"slot_key": "delivery_routes",  "required_fields": ["route_id","scheduled_date","stops_json","departure_time"], "optional_fields": ["capacity_units","window_end_time","vehicle_id","origin_node_id"], "unlocks": ["route_delivery_risk","iftar_window_miss_risk","route_capacity_breach","prayer_window_conflict","reroute_delivery","swap_vehicle_capacity"]},
+      {"slot_key": "store_velocity",   "required_fields": ["sku","node_id","units_per_hour_avg"], "optional_fields": ["date","peak_hour_local"], "unlocks": ["store_velocity_mismatch","store_fair_share_deviation"]},
+      {"slot_key": "demand_plan",      "required_fields": ["sku","node_id","week_start","forecast_qty"], "optional_fields": [], "unlocks": []},
+      {"slot_key": "actual_demand",    "required_fields": ["sku","node_id","week_start","actual_qty"], "optional_fields": [], "unlocks": []}
+    ],
+    "library": {
+      "problem_templates": [
+        {"key": "allocation_gap", "display_name": "Allocation Gap",
+          "requires_slots": ["opening_inventory","store_velocity"],
+          "rule": {"type": "fair_share_deviation", "deviation_pct_threshold": 0.25},
+          "severity": {"default": "warning"},
+          "aggregation": "per_sku_per_store"},
+        {"key": "store_fair_share_deviation", "display_name": "Store Fair-Share Deviation",
+          "requires_slots": ["opening_inventory","store_velocity"],
+          "rule": {"type": "fair_share_deviation", "deviation_pct_threshold": 0.35},
+          "severity": {"critical_if_deviation_pct_ge": 0.5, "warning_if_deviation_pct_ge": 0.35, "default": "warning"},
+          "aggregation": "per_sku_per_store"},
+        {"key": "route_delivery_risk", "display_name": "Route Delivery Risk",
+          "requires_slots": ["delivery_routes"],
+          "rule": {"type": "route_eta_vs_window", "buffer_minutes": 15},
+          "severity": {"default": "warning"},
+          "aggregation": "per_route"},
+        {"key": "iftar_window_miss_risk", "display_name": "Iftar Window Miss Risk",
+          "requires_slots": ["delivery_routes"],
+          "rule": {"type": "route_eta_vs_iftar", "buffer_minutes": 15},
+          "severity": {"critical_if_eta_after_iftar": true, "default": "warning"},
+          "aggregation": "per_route_per_stop"},
+        {"key": "expiry_risk_cluster", "display_name": "Expiry Risk Cluster",
+          "requires_slots": ["batch_inventory"],
+          "rule": {"type": "batch_expiry_within_window", "rsl_days_threshold": 2, "min_batch_qty": 1},
+          "severity": {"critical_if_rsl_days_le": 1, "warning_if_rsl_days_le": 2, "default": "warning"},
+          "aggregation": "per_batch"}
+      ],
+      "root_cause_templates": [
+        {"key": "route_capacity_breach", "display_name": "Route Capacity Breach",
+          "requires_slots": ["delivery_routes"],
+          "evidence_query": "route_planned_units_exceed_vehicle_capacity",
+          "weight": 0.30},
+        {"key": "prayer_window_conflict", "display_name": "Prayer / Iftar Window Conflict",
+          "requires_slots": ["delivery_routes"],
+          "evidence_query": "route_eta_within_iftar_buffer",
+          "weight": 0.30},
+        {"key": "rsl_below_threshold", "display_name": "Remaining Shelf Life Below Threshold",
+          "requires_slots": ["batch_inventory"],
+          "evidence_query": "batches_with_rsl_days_le_threshold",
+          "weight": 0.40},
+        {"key": "store_velocity_mismatch", "display_name": "Store Velocity Mismatch",
+          "requires_slots": ["store_velocity","opening_inventory"],
+          "evidence_query": "allocation_vs_velocity_ratio_outlier",
+          "weight": 0.25},
+        {"key": "cold_chain_break", "display_name": "Cold Chain Break",
+          "requires_slots": ["batch_inventory"],
+          "evidence_query": "batches_flagged_quality_hold_or_cold_chain_event",
+          "weight": 0.25}
+      ],
+      "resolution_families": [
+        {"key": "rebalance_allocation", "display_name": "Rebalance Allocation (velocity × RSL)",
+          "requires_slots": ["opening_inventory","store_velocity"],
+          "enumeration_rule": "rebalance_by_velocity_and_rsl",
+          "default_qty_rule": "fair_share_delta",
+          "direction": "lateral"},
+        {"key": "reroute_delivery", "display_name": "Reroute Delivery",
+          "requires_slots": ["delivery_routes"],
+          "enumeration_rule": "swap_stop_order_or_vehicle_for_iftar_fit",
+          "default_qty_rule": "route_level",
+          "direction": "route"},
+        {"key": "inter_store_transfer", "display_name": "Inter-Store Transfer",
+          "requires_slots": ["opening_inventory","sourcing_network"],
+          "enumeration_rule": "push_from_slow_store_to_fast_store",
+          "default_qty_rule": "excess_qty",
+          "direction": "lateral"},
+        {"key": "markdown_local", "display_name": "Markdown (local)",
+          "requires_slots": ["batch_inventory"],
+          "enumeration_rule": "propose_markdown_for_batches_with_rsl_below_threshold",
+          "default_qty_rule": "batch_qty",
+          "direction": "demand_shaping"},
+        {"key": "scrap_donate", "display_name": "Scrap or Donate",
+          "requires_slots": ["batch_inventory"],
+          "enumeration_rule": "terminal_action_for_batches_with_rsl_le_critical",
+          "default_qty_rule": "batch_qty",
+          "direction": "terminal"},
+        {"key": "redirect_to_high_velocity_store", "display_name": "Redirect to High-Velocity Store",
+          "requires_slots": ["batch_inventory","sourcing_network"],
+          "enumeration_rule": "push_aged_batches_to_fastest_selling_sibling",
+          "default_qty_rule": "batch_qty",
+          "direction": "outbound"},
+        {"key": "swap_vehicle_capacity", "display_name": "Swap Vehicle Capacity",
+          "requires_slots": ["delivery_routes"],
+          "enumeration_rule": "swap_to_vehicle_with_remaining_capacity",
+          "default_qty_rule": "route_level",
+          "direction": "route"}
+      ],
+      "action_templates": {
+        "create_task": {"delivery_mode": "task", "target_system": "servicenow"},
+        "create_recommendation_record": {"delivery_mode": "recommendation_record", "target_system": "db.recommendations"},
+        "create_webhook_payload": {"delivery_mode": "webhook", "schema_ref": "schemas/allocation_webhook.v1.json"},
+        "export_action_csv": {"delivery_mode": "csv", "columns": ["run_id","sku","node_id","family_key","qty","route_id","window_miss_min"]}
+      }
+    },
+    "decision_graph": [
+      {"from_problem": "allocation_gap",
+        "compatible_root_causes": ["store_velocity_mismatch","rsl_below_threshold"],
+        "compatible_resolutions": ["rebalance_allocation","inter_store_transfer","redirect_to_high_velocity_store"],
+        "default_rank": ["rebalance_allocation","inter_store_transfer","redirect_to_high_velocity_store"]},
+      {"from_problem": "store_fair_share_deviation",
+        "compatible_root_causes": ["store_velocity_mismatch"],
+        "compatible_resolutions": ["rebalance_allocation","inter_store_transfer"],
+        "default_rank": ["rebalance_allocation","inter_store_transfer"]},
+      {"from_problem": "route_delivery_risk",
+        "compatible_root_causes": ["route_capacity_breach","prayer_window_conflict"],
+        "compatible_resolutions": ["reroute_delivery","swap_vehicle_capacity"],
+        "default_rank": ["reroute_delivery","swap_vehicle_capacity"]},
+      {"from_problem": "iftar_window_miss_risk",
+        "compatible_root_causes": ["prayer_window_conflict","route_capacity_breach"],
+        "compatible_resolutions": ["reroute_delivery","swap_vehicle_capacity"],
+        "default_rank": ["reroute_delivery","swap_vehicle_capacity"]},
+      {"from_problem": "expiry_risk_cluster",
+        "compatible_root_causes": ["rsl_below_threshold","cold_chain_break"],
+        "compatible_resolutions": ["markdown_local","redirect_to_high_velocity_store","scrap_donate","inter_store_transfer"],
+        "default_rank": ["markdown_local","redirect_to_high_velocity_store","inter_store_transfer","scrap_donate"]}
+    ],
+    "llm_call_sites": {
+      "intent_parse": {
+        "provider_default": "openai",
+        "model_default": "gpt-4.1-mini",
+        "temperature": 0.0,
+        "max_tokens": 400,
+        "system_prompt": "You are the intent parser for an inventory allocation & distribution agent. Given a planner's natural-language question, return STRICT JSON with keys intent_mode (show|analyse|solve|simulate|execute|clarify|out_of_scope), scope (object with optional skus[], nodes[], route_ids[], delivery_date, window (e.g. 'iftar'), simulation_delta{}), focus (short string), confidence (0..1). Respond with ONLY JSON."
+      },
+      "followup_interpret": {
+        "provider_default": "openai",
+        "model_default": "gpt-4.1-mini",
+        "temperature": 0.0,
+        "max_tokens": 250,
+        "system_prompt": "You refine a prior chat turn's scope for an allocation agent. Return STRICT JSON with keys: skus[], nodes[], route_ids[], inherit_delivery_date (bool). Respond with ONLY JSON."
+      },
+      "explanation": {
+        "provider_default": "openai",
+        "model_default": "gpt-4.1-mini",
+        "temperature": 0.2,
+        "max_tokens": 900,
+        "system_prompt": "You are a senior distribution planner explaining results of a deterministic allocation + routing run. Open with a 1-2 sentence headline. Name the top 1-3 problems (by route, batch, or store) with precise qtys/minutes/RSL. Explain the leading root cause plainly (reference evidence). Recommend the top 1-2 resolutions with specifics (qty, source/target, route swap, markdown %). Close with a concrete next step. Never invent numbers. Max ~250 words. Natural sentences."
+      }
+    },
+    "response_schema": {
+      "structured_keys": ["run_id","intent_mode","scope","problems","root_causes","resolutions","action_plan","capabilities_applied","warnings"],
+      "narrative_max_chars": 1800,
+      "always_include_audit_ref": true
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "slot_key": "promotion_plan",
+  "display_name": "Promotion Plan",
+  "description": "Planned promotions per sku_location_week with uplift percentages. When bound, enables the promotion_supply_gap problem template and the phase_promotion resolution family.",
+  "is_required": false,
+  "required_fields": ["sku", "node_id", "week_start", "uplift_pct"],
+  "optional_fields": ["promo_type", "promo_id", "promo_start", "promo_end"],
+  "grain_hint": "sku_location_week",
+  "derivation_hint": {
+    "available_source": "promotion_plan_weekly",
+    "notes": "Dedicated table; no derivable fallback from existing schema."
+  }
+}

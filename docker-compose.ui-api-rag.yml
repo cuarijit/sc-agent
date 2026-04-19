@@ -1,0 +1,42 @@
+services:
+  scp-api:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - scp_pip_cache:/root/.cache/pip
+    env_file:
+      - backend/config/auth.env
+      - path: backend/config/auth.local.env
+        required: false
+    command: bash -lc "mkdir -p data/help/content && pip install -r backend/requirements.txt && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\" >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 600s
+    ports:
+      - "${API_PORT:-8000}:8000"
+
+  scp-ui:
+    image: node:20
+    working_dir: /app/frontend
+    volumes:
+      - ./frontend:/app/frontend
+      - ./config:/app/config
+    environment:
+      # Inside the compose network, the API is reachable as the service hostname.
+      # Vite dev server reads VITE_API_PROXY_TARGET (see frontend/vite.config.ts)
+      # to know where to forward /api, /auth, /admin. Without this, the default
+      # "http://127.0.0.1:8088" would resolve to the UI container itself.
+      VITE_API_PROXY_TARGET: http://scp-api:8000
+    command: bash -lc "npm install && npm run dev -- --host 0.0.0.0 --port 5174"
+    ports:
+      - "${UI_PORT:-5174}:5174"
+    depends_on:
+      scp-api:
+        condition: service_healthy
+
+volumes:
+  scp_pip_cache:

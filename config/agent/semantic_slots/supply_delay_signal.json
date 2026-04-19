@@ -1,0 +1,13 @@
+{
+  "slot_key": "supply_delay_signal",
+  "display_name": "Supply Delay Signal",
+  "description": "Signals that upstream supply is delayed (EDI late-shipment notice, carrier ETA update). When bound, strengthens the late_supply root cause. Can be derived from supply_plan.delivery_delay_days.",
+  "is_required": false,
+  "required_fields": ["sku", "source_node_id", "delay_days"],
+  "optional_fields": ["signal_type", "effective_from", "order_id"],
+  "grain_hint": "sku_location",
+  "derivation_hint": {
+    "available_source": "replenishment_orders",
+    "notes": "Derivable from ReplenishmentOrder.delivery_delay_days > 0. No new table required."
+  }
+}

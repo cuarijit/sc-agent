@@ -39,8 +39,8 @@ import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import { SectionCard } from "../components/shared/UiBits";
 import { appendGlobalFilters, firstFilterValue, globalFiltersKey, normalizedFilterList } from "../types/filters";
 import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
-import InventoryDiagnosticAgent from "./InventoryDiagnosticAgent";
 import ParameterDiagnosticAgent from "./ParameterDiagnosticAgent";
+import { ROUTE_PATHS } from "../app/routePaths";
 
 function buildParams(filters: ShellContextValue["filters"]) {
   return appendGlobalFilters(new URLSearchParams(), filters);
@@ -72,7 +72,6 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [alertsDashboardCollapsed, setAlertsDashboardCollapsed] = useState(false);
-  const [inventoryAgentModalOpen, setInventoryAgentModalOpen] = useState(false);
   const [parameterAgentModalOpen, setParameterAgentModalOpen] = useState(false);
   const filtersKey = globalFiltersKey(filters);
 
@@ -289,7 +288,7 @@ export default function DashboardPage() {
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
             <Chip size="small" label={`Run ${data?.run_id ?? "N/A"}`} variant="outlined" />
             <Chip size="small" label={`Alerts ${alertRows.length}`} />
-            <Button size="small" variant="outlined" startIcon={<PsychologyAltOutlinedIcon />} onClick={() => setInventoryAgentModalOpen(true)}>
+            <Button size="small" variant="outlined" startIcon={<PsychologyAltOutlinedIcon />} onClick={() => navigate(ROUTE_PATHS.inventoryDiagnosticConsole)}>
               Inventory Agent
             </Button>
             <Button size="small" variant="outlined" startIcon={<SmartToyOutlinedIcon />} onClick={() => setParameterAgentModalOpen(true)}>
@@ -455,24 +454,6 @@ export default function DashboardPage() {
         </Stack>
       </Paper>
       </SectionCard>
-
-      <Dialog
-        open={inventoryAgentModalOpen}
-        onClose={() => setInventoryAgentModalOpen(false)}
-        fullWidth
-        maxWidth="xl"
-        slotProps={{ paper: { sx: { minHeight: "80vh", maxHeight: "90vh" } } }}
-      >
-        <DialogTitle>Inventory Diagnostic Agent</DialogTitle>
-        <DialogContent dividers sx={{ p: 0, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 2 }}>
-            <InventoryDiagnosticAgent />
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setInventoryAgentModalOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
 
       <Dialog
         open={parameterAgentModalOpen}

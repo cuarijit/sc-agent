@@ -1,0 +1,9 @@
+{
+  "slot_key": "supply_plan",
+  "display_name": "Supply Plan",
+  "description": "Inbound orders per sku_location_week (open replenishment orders or planned receipts). Feeds inbound_qty into the weekly projection.",
+  "is_required": true,
+  "required_fields": ["sku", "node_id", "week_start", "inbound_qty"],
+  "optional_fields": ["order_id", "order_status", "delivery_delay_days", "ship_from_node_id", "expedite_possible_flag"],
+  "grain_hint": "sku_location_week"
+}

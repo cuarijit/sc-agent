@@ -1,0 +1,9 @@
+{
+  "slot_key": "location_master",
+  "display_name": "Location Master",
+  "description": "Node-level reference data for scope resolution, prioritization (customer-facing flag), and sourcing-network traversal.",
+  "is_required": true,
+  "required_fields": ["node_id"],
+  "optional_fields": ["name", "node_type", "echelon", "region", "city", "state", "is_customer_facing"],
+  "grain_hint": "node"
+}

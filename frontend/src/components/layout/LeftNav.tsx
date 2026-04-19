@@ -5,7 +5,9 @@ import { Box, ButtonBase, Menu, MenuItem, Stack, Tooltip, Typography } from "@mu
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { NAV_MODULES, type NavItem } from "../../app/navigation";
+import { type NavItem, type NavModule } from "../../app/navigation";
+import { useAuth } from "../../features/auth/AuthContext";
+import { useDynamicNavigation } from "../../app/navigation/useDynamicNavigation";
 
 function isActive(pathname: string, route: string) {
   if (route === "/") {
@@ -65,18 +67,32 @@ export default function LeftNav({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { hasEntitlement, state: authState } = useAuth();
+  // Live nav from /api/nav/modules — admin edits in Module Configurator
+  // flow through to the sidebar. Falls back to static NAV_MODULES when the
+  // user isn't authenticated or the API hasn't responded yet.
+  const liveModules = useDynamicNavigation();
+  const visibleModules: NavModule[] = useMemo(() => {
+    if (authState !== "authenticated") return liveModules;
+    return liveModules
+      .map((m) => ({
+        ...m,
+        items: m.items.filter((it) => !it.entitlement || hasEntitlement(it.entitlement)),
+      }))
+      .filter((m) => m.items.length > 0);
+  }, [authState, hasEntitlement, liveModules]);
   const routeModuleId = useMemo(
-    () => NAV_MODULES.find((module) => module.items.some((item) => isActive(location.pathname, item.route)))?.id ?? NAV_MODULES[0]?.id ?? "",
-    [location.pathname],
+    () => visibleModules.find((module) => module.items.some((item) => isActive(location.pathname, item.route)))?.id ?? visibleModules[0]?.id ?? "",
+    [location.pathname, visibleModules],
   );
   const [selectedModuleId, setSelectedModuleId] = useState<string>(() => {
     const stored = localStorage.getItem("asc_selected_module_id");
-    return stored && NAV_MODULES.some((module) => module.id === stored) ? stored : routeModuleId;
+    return stored && visibleModules.some((module) => module.id === stored) ? stored : routeModuleId;
   });
   const [moduleAnchorEl, setModuleAnchorEl] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (!selectedModuleId || !NAV_MODULES.some((module) => module.id === selectedModuleId)) {
+    if (!selectedModuleId || !visibleModules.some((module) => module.id === selectedModuleId)) {
       setSelectedModuleId(routeModuleId);
     }
   }, [routeModuleId, selectedModuleId]);
@@ -86,7 +102,7 @@ export default function LeftNav({
     localStorage.setItem("asc_selected_module_id", selectedModuleId);
   }, [selectedModuleId]);
 
-  const selectedModule = NAV_MODULES.find((module) => module.id === selectedModuleId) ?? NAV_MODULES[0];
+  const selectedModule = visibleModules.find((module) => module.id === selectedModuleId) ?? visibleModules[0];
 
   return (
     <Box component="nav" className={`side-nav ${collapsed ? "side-nav-collapsed" : ""}`}>
@@ -114,7 +130,7 @@ export default function LeftNav({
           anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
           transformOrigin={{ vertical: "top", horizontal: "left" }}
         >
-          {NAV_MODULES.map((module) => (
+          {visibleModules.map((module) => (
             <MenuItem
               key={module.id}
               selected={module.id === selectedModule?.id}

@@ -34,6 +34,13 @@ backend/__pycache__/
 
 # Database runtime
 *.runtime.db
+# SQLite WAL / shared-memory journal files (runtime-only side files)
+*.db-shm
+*.db-wal
+
+# Local auth/config env files with secrets
+backend/config/auth.env
+backend/config/*.env
 
 # Temp
 *.log

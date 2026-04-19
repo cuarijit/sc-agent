@@ -48,14 +48,21 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ??
   (typeof window !== "undefined" && window.location.protocol === "file:" ? "http://127.0.0.1:8000" : "");
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
     ...init,
   });
+  if (response.status === 401) {
+    // Notify AuthProvider so it can redirect to /login
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("auth:session-expired"));
+    }
+  }
   if (!response.ok) {
     let detail = "";
     try {
@@ -65,6 +72,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       detail = "";
     }
     throw new Error(`Request failed: ${response.status}${detail}`);
+  }
+  // Guard against the "stale tab" failure mode: when Vite's SPA fallback
+  // serves index.html for an unmatched proxy path, response.ok is true but
+  // Content-Type is text/html. Throw a clear error rather than letting
+  // JSON.parse choke on "<!doctype html>".
+  const ct = response.headers.get("content-type") || "";
+  if (!ct.toLowerCase().includes("application/json")) {
+    throw new Error(
+      `Server returned non-JSON (${ct || "no content-type"}) for ${path} — ` +
+      `is the Vite proxy pointed at the right backend? Try a hard refresh.`,
+    );
   }
   return response.json() as Promise<T>;
 }
@@ -435,4 +453,209 @@ export function fetchCustomerHierarchy(params?: URLSearchParams): Promise<Custom
 
 export function fetchDemandPlanningKpis(): Promise<DemandPlanningKpiResponse> {
   return request("/api/demand/kpis");
+}
+
+// --- Inventory Diagnostic Agent -------------------------------------------
+
+export interface InventoryDiagnosticQueryRequest {
+  instance_id: string;
+  message: string;
+  conversation_id?: string | null;
+  turn_index?: number;
+  openai_api_key?: string | null;
+  llm_provider?: string | null;
+  llm_model?: string | null;
+}
+
+export interface InventoryDiagnosticResponse {
+  run_id: string;
+  intent_mode: string;
+  agent_type: string;
+  agent_type_version: number;
+  instance_id: string;
+  conversation_id: string | null;
+  structured: Record<string, unknown> & {
+    problems?: Array<Record<string, unknown>>;
+    root_causes?: Array<Record<string, unknown>>;
+    resolutions?: Array<Record<string, unknown>>;
+    action_plan?: Record<string, unknown> | null;
+    capabilities_applied?: Record<string, unknown>;
+    warnings?: string[];
+  };
+  narrative: string;
+  follow_up_questions: string[];
+  warnings: string[];
+  llm_calls: Array<Record<string, unknown>>;
+  llm_active: boolean;
+  llm_provider: string | null;
+  llm_model: string | null;
+}
+
+export function queryInventoryDiagnostic(
+  payload: InventoryDiagnosticQueryRequest,
+): Promise<InventoryDiagnosticResponse> {
+  return request("/api/inventory-diagnostic/query", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchInventoryDiagnosticRun(
+  runId: string,
+): Promise<Record<string, unknown>> {
+  return request(`/api/inventory-diagnostic/runs/${encodeURIComponent(runId)}`);
+}
+
+// --- Inventory Allocation & Distribution Agent ----------------------------
+// Reuses InventoryDiagnosticQueryRequest/Response shape (both pipelines return
+// the same structured envelope). Backend handler dispatch is by handler_hint.
+
+export function queryInventoryAllocation(
+  payload: InventoryDiagnosticQueryRequest,
+): Promise<InventoryDiagnosticResponse> {
+  return request("/api/inventory-allocation/query", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// --- Demand Sensing Agent -------------------------------------------------
+// Same request/response shape as the other two agents.
+
+export function queryDemandSensing(
+  payload: InventoryDiagnosticQueryRequest,
+): Promise<InventoryDiagnosticResponse> {
+  return request("/api/demand-sensing/query", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface CapabilitySnapshot {
+  instance_id: string;
+  slots: Record<
+    string,
+    {
+      status: "available" | "degraded" | "missing";
+      reason: string | null;
+      missing_required_fields: string[];
+      missing_optional_fields: string[];
+      binding_kind: string | null;
+      source_ref: string | null;
+    }
+  >;
+  disabled_problems: string[];
+  disabled_root_causes: string[];
+  disabled_resolutions: string[];
+  warnings: string[];
+  checked_at: string;
+}
+
+export function fetchInstanceCapability(
+  instanceId: string,
+  force: boolean = false,
+): Promise<CapabilitySnapshot> {
+  const qs = force ? "?force=true" : "";
+  return request(
+    `/admin/agent-instances/${encodeURIComponent(instanceId)}/capability${qs}`,
+  );
+}
+
+export function seedInventoryDiagnosticDemo(): Promise<{
+  status: string;
+  summary: { rows: Record<string, number> };
+}> {
+  return request("/admin/inventory-diagnostic/seed-demo", { method: "POST" });
+}
+
+export interface LlmHealthResponse {
+  env_keys_present: { OPENAI: boolean; ANTHROPIC: boolean };
+  providers: {
+    openai: {
+      status: "ok" | "error" | "no_key";
+      detail?: string;
+      provider?: string;
+      model?: string | null;
+      latency_ms?: number;
+      response_preview?: string;
+    };
+    anthropic: {
+      status: "ok" | "error" | "no_key";
+      detail?: string;
+      provider?: string;
+      model?: string | null;
+      latency_ms?: number;
+      response_preview?: string;
+    };
+  };
+}
+
+export function checkLlmHealth(
+  payload: { openai_api_key?: string; anthropic_api_key?: string } = {},
+): Promise<LlmHealthResponse> {
+  return request("/admin/inventory-diagnostic/llm-health", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface RunStepArtifact {
+  id: number;
+  run_id: string;
+  step_id: string;
+  sequence: number;
+  status: "ok" | "skipped" | "error";
+  duration_ms: number;
+  row_count: number;
+  inputs: Record<string, unknown>;
+  outputs: Record<string, unknown>;
+  sample_rows: unknown[];
+  llm_call: Record<string, unknown>;
+  warnings: string[];
+  created_at: string;
+}
+
+export function fetchRunSteps(
+  runId: string,
+  agentType?: string,
+): Promise<RunStepArtifact[]> {
+  // Step artifacts live in a shared table but each agent exposes its own /steps
+  // endpoint. Dispatch by agent_type so allocation / demand-sensing runs
+  // surface in the Pipeline tab.
+  let base = "/api/inventory-diagnostic";
+  if (agentType === "inventory_allocation_agent") base = "/api/inventory-allocation";
+  else if (agentType === "demand_sensing_agent") base = "/api/demand-sensing";
+  return request(`${base}/runs/${encodeURIComponent(runId)}/steps`);
+}
+
+export interface ActionPlanRecord {
+  plan_id: string;
+  run_id: string;
+  instance_id: string;
+  plan_status: string;
+  action_template_key: string;
+  target_system: string | null;
+  delivery_mode: string;
+  webhook_url: string | null;
+  payload: Record<string, unknown>;
+  dispatch_attempts: number;
+  last_dispatch_at: string | null;
+  last_error: string | null;
+  created_at: string;
+}
+
+export function fetchRunActionPlans(runId: string): Promise<ActionPlanRecord[]> {
+  return request(`/api/inventory-diagnostic/runs/${encodeURIComponent(runId)}/action-plans`);
+}
+
+export function dispatchActionPlan(planId: string): Promise<{
+  plan_id: string;
+  status: string;
+  status_code: number | null;
+  error: string | null;
+  attempts: number;
+}> {
+  return request(`/api/inventory-diagnostic/action-plans/${encodeURIComponent(planId)}/dispatch`, {
+    method: "POST",
+  });
 }

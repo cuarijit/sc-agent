@@ -17,6 +17,9 @@ class ProductMaster(Base):
     temperature_zone: Mapped[str] = mapped_column(String)
     primary_supplier: Mapped[str] = mapped_column(String)
     description: Mapped[str] = mapped_column(Text)
+    shelf_life_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cold_chain_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+    category_perishable: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
 
 class InventoryProjectionProductConfig(Base):
@@ -333,6 +336,7 @@ class NetworkInventorySnapshot(Base):
     node_id: Mapped[str] = mapped_column(String, index=True)
     as_of_date: Mapped[str] = mapped_column(String, index=True)
     on_hand_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    quality_hold_flag: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
 
 class NetworkPosWeekly(Base):
@@ -343,6 +347,66 @@ class NetworkPosWeekly(Base):
     node_id: Mapped[str] = mapped_column(String, index=True)
     week_start: Mapped[str] = mapped_column(String, index=True)
     pos_qty: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class InventoryBatchSnapshot(Base):
+    __tablename__ = "inventory_batch_snapshot"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    batch_id: Mapped[str] = mapped_column(String, index=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    node_id: Mapped[str] = mapped_column(String, index=True)
+    as_of_date: Mapped[str] = mapped_column(String, index=True)
+    batch_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    received_date: Mapped[str | None] = mapped_column(String, nullable=True)
+    expiry_date: Mapped[str] = mapped_column(String, index=True)
+    quality_hold_flag: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+
+class PosHourlyActual(Base):
+    __tablename__ = "pos_hourly_actual"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    node_id: Mapped[str] = mapped_column(String, index=True)
+    timestamp_hour: Mapped[str] = mapped_column(String, index=True)
+    units_sold: Mapped[float] = mapped_column(Float, default=0.0)
+    on_hand_snapshot_qty: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class RamadanCalendar(Base):
+    __tablename__ = "ramadan_calendar"
+
+    calendar_date: Mapped[str] = mapped_column(String, primary_key=True)
+    ramadan_day: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    iftar_local_time: Mapped[str | None] = mapped_column(String, nullable=True)
+    notes: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class DeliveryRoute(Base):
+    __tablename__ = "delivery_routes"
+
+    route_id: Mapped[str] = mapped_column(String, primary_key=True)
+    scheduled_date: Mapped[str] = mapped_column(String, index=True)
+    vehicle_id: Mapped[str] = mapped_column(String, index=True)
+    capacity_units: Mapped[float] = mapped_column(Float, default=0.0)
+    departure_time: Mapped[str] = mapped_column(String)
+    window_end_time: Mapped[str | None] = mapped_column(String, nullable=True)
+    origin_node_id: Mapped[str] = mapped_column(String, index=True)
+    stops_json: Mapped[str] = mapped_column(Text, default="[]")
+    status: Mapped[str] = mapped_column(String, default="planned", index=True)
+
+
+class StoreVelocity(Base):
+    __tablename__ = "store_velocity"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    node_id: Mapped[str] = mapped_column(String, index=True)
+    date: Mapped[str] = mapped_column(String, index=True)
+    units_per_hour_avg: Mapped[float] = mapped_column(Float, default=0.0)
+    peak_hour_local: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    peak_hour_multiplier: Mapped[float] = mapped_column(Float, default=1.0)
 
 
 class NetworkBREValue(Base):
@@ -707,3 +771,351 @@ class CustomerHierarchy(Base):
     bill_to: Mapped[str | None] = mapped_column(String, nullable=True)
     sold_to: Mapped[str | None] = mapped_column(String, nullable=True)
     planning_level: Mapped[str] = mapped_column(String, default="direct")
+
+
+class AgentTemplateRecord(Base):
+    __tablename__ = "agent_templates"
+
+    type_key: Mapped[str] = mapped_column(String, primary_key=True)
+    display_name: Mapped[str] = mapped_column(String, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String, default="active", index=True)
+    available_actions_json: Mapped[str] = mapped_column(Text, default="[]")
+    handler_hint: Mapped[str] = mapped_column(String, default="chat_only")
+    assistant_mode: Mapped[str] = mapped_column(String, default="search-data-assistant")
+    template_version: Mapped[int] = mapped_column(Integer, default=1)
+    config_schema_json: Mapped[str] = mapped_column(Text, default="{}")
+    default_config_json: Mapped[str] = mapped_column(Text, default="{}")
+    default_instance_json: Mapped[str] = mapped_column(Text, default="{}")
+    ui_hints_json: Mapped[str] = mapped_column(Text, default="{}")
+    behavior_json: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class AgentInstanceRecord(Base):
+    __tablename__ = "agent_instances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instance_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    agent_type: Mapped[str] = mapped_column(String, index=True)
+    display_name: Mapped[str] = mapped_column(String, index=True)
+    icon: Mapped[str | None] = mapped_column(String, nullable=True)
+    button_text: Mapped[str | None] = mapped_column(String, nullable=True)
+    button_style: Mapped[str] = mapped_column(String, default="icon_and_text")
+    tooltip_text: Mapped[str | None] = mapped_column(String, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_directory: Mapped[str | None] = mapped_column(String, nullable=True)
+    config_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    module_slug: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    role_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    action_permissions_json: Mapped[str] = mapped_column(Text, default="{}")
+    type_specific_config_json: Mapped[str] = mapped_column(Text, default="{}")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class SemanticSlotDefinition(Base):
+    __tablename__ = "semantic_slot_definitions"
+
+    slot_key: Mapped[str] = mapped_column(String, primary_key=True)
+    display_name: Mapped[str] = mapped_column(String, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_required: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    required_fields_json: Mapped[str] = mapped_column(Text, default="[]")
+    optional_fields_json: Mapped[str] = mapped_column(Text, default="[]")
+    grain_hint: Mapped[str] = mapped_column(String, default="sku_location_week")
+    derivation_hint_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class AgentInstanceDatasetBinding(Base):
+    __tablename__ = "agent_instance_dataset_bindings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instance_id: Mapped[str] = mapped_column(String, index=True)
+    slot_key: Mapped[str] = mapped_column(String, index=True)
+    binding_kind: Mapped[str] = mapped_column(String, default="sql_table")
+    source_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    field_map_json: Mapped[str] = mapped_column(Text, default="{}")
+    filter_predicate_json: Mapped[str] = mapped_column(Text, default="{}")
+    availability_status: Mapped[str] = mapped_column(String, default="missing", index=True)
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_checked_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class AgentCapabilitySnapshot(Base):
+    __tablename__ = "agent_capability_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instance_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    slots_available_json: Mapped[str] = mapped_column(Text, default="{}")
+    disabled_problems_json: Mapped[str] = mapped_column(Text, default="[]")
+    disabled_root_causes_json: Mapped[str] = mapped_column(Text, default="[]")
+    disabled_resolutions_json: Mapped[str] = mapped_column(Text, default="[]")
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    checked_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class PromotionPlanWeekly(Base):
+    __tablename__ = "promotion_plan_weekly"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    node_id: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    uplift_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    promo_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class AgentRunStepArtifact(Base):
+    __tablename__ = "agent_run_step_artifacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String, index=True)
+    step_id: Mapped[str] = mapped_column(String, index=True)
+    sequence: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String, default="ok", index=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    input_digest_json: Mapped[str] = mapped_column(Text, default="{}")
+    output_digest_json: Mapped[str] = mapped_column(Text, default="{}")
+    sample_rows_json: Mapped[str] = mapped_column(Text, default="[]")
+    llm_call_json: Mapped[str] = mapped_column(Text, default="{}")
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class AgentActionPlan(Base):
+    __tablename__ = "agent_action_plans"
+
+    plan_id: Mapped[str] = mapped_column(String, primary_key=True)
+    run_id: Mapped[str] = mapped_column(String, index=True)
+    instance_id: Mapped[str] = mapped_column(String, index=True)
+    plan_status: Mapped[str] = mapped_column(String, default="draft", index=True)
+    action_template_key: Mapped[str] = mapped_column(String, index=True)
+    target_system: Mapped[str | None] = mapped_column(String, nullable=True)
+    delivery_mode: Mapped[str] = mapped_column(String, default="recommendation_record")
+    webhook_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    dispatch_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_dispatch_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class AgentRun(Base):
+    __tablename__ = "agent_runs"
+
+    run_id: Mapped[str] = mapped_column(String, primary_key=True)
+    instance_id: Mapped[str] = mapped_column(String, index=True)
+    agent_type: Mapped[str] = mapped_column(String, index=True)
+    agent_type_version: Mapped[int] = mapped_column(Integer, default=0)
+    conversation_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    turn_index: Mapped[int] = mapped_column(Integer, default=0)
+    intent_mode: Mapped[str] = mapped_column(String, index=True, default="show")
+    user_prompt: Mapped[str] = mapped_column(Text, default="")
+    parsed_intent_json: Mapped[str] = mapped_column(Text, default="{}")
+    scope_json: Mapped[str] = mapped_column(Text, default="{}")
+    bindings_snapshot_json: Mapped[str] = mapped_column(Text, default="[]")
+    disabled_capabilities_json: Mapped[str] = mapped_column(Text, default="{}")
+    scoring_profile_used_json: Mapped[str] = mapped_column(Text, default="{}")
+    inputs_digest_json: Mapped[str] = mapped_column(Text, default="{}")
+    structured_output_json: Mapped[str] = mapped_column(Text, default="{}")
+    narrative_text: Mapped[str] = mapped_column(Text, default="")
+    llm_calls_json: Mapped[str] = mapped_column(Text, default="[]")
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]")
+    status: Mapped[str] = mapped_column(String, default="ok", index=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+
+# =============================================================================
+# Auth / RBAC tables — ORM mirror of the schema created by AuthStore raw SQL.
+# Both code paths converge: AuthStore.CREATE TABLE IF NOT EXISTS is idempotent
+# with Base.metadata.create_all, so either bootstrap order works.
+# =============================================================================
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String, unique=True, index=True)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
+    password_hash: Mapped[str] = mapped_column(String)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class UserSession(Base):
+    __tablename__ = "sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, index=True)
+    session_token_hash: Mapped[str] = mapped_column(String, unique=True, index=True)
+    expires_at: Mapped[str] = mapped_column(String, index=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    revoked_at: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
+
+class Role(Base):
+    __tablename__ = "roles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, unique=True, index=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class Entitlement(Base):
+    __tablename__ = "entitlements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String, unique=True, index=True)
+    resource_type: Mapped[str] = mapped_column(String, index=True)
+    resource_key: Mapped[str] = mapped_column(String, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class RoleEntitlement(Base):
+    __tablename__ = "role_entitlements"
+
+    role_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entitlement_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class UserRole(Base):
+    __tablename__ = "user_roles"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    role_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class DataAccessGroup(Base):
+    __tablename__ = "data_access_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class UserDataAccessGroup(Base):
+    __tablename__ = "user_data_access_groups"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class UserSetting(Base):
+    __tablename__ = "user_settings"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    settings_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class ModuleRecord(Base):
+    __tablename__ = "modules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    module_slug: Mapped[str] = mapped_column(String, unique=True, index=True)
+    label: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    documentation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config_root: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    icon: Mapped[str | None] = mapped_column(String, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    landing_page_slug: Mapped[str | None] = mapped_column(String, nullable=True)
+    module_logo: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class ModulePageRecord(Base):
+    __tablename__ = "module_pages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    module_id: Mapped[int] = mapped_column(Integer, index=True)
+    page_slug: Mapped[str] = mapped_column(String, index=True)
+    label: Mapped[str] = mapped_column(String)
+    page_type: Mapped[str] = mapped_column(String, default="custom", index=True)
+    config_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    icon: Mapped[str | None] = mapped_column(String, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class ModuleRoleAccessRecord(Base):
+    __tablename__ = "module_role_access"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    module_id: Mapped[int] = mapped_column(Integer, index=True)
+    role_id: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class ModulePageRoleAccessRecord(Base):
+    __tablename__ = "module_page_role_access"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    page_id: Mapped[int] = mapped_column(Integer, index=True)
+    role_id: Mapped[int] = mapped_column(Integer, index=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class ModuleEntitlementRecord(Base):
+    __tablename__ = "module_entitlements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    module_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    page_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    entitlement_id: Mapped[int] = mapped_column(Integer, index=True)
+    auto_generated: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class ModulePageAgentInstanceRecord(Base):
+    __tablename__ = "module_page_agent_instances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    page_id: Mapped[int] = mapped_column(Integer, index=True)
+    agent_instance_id: Mapped[int] = mapped_column(Integer, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class PromptActivityLog(Base):
+    __tablename__ = "prompt_activity_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    username: Mapped[str] = mapped_column(String, index=True)
+    submitted_at: Mapped[str] = mapped_column(String, index=True)
+    question: Mapped[str] = mapped_column(Text)
+    generated_sql: Mapped[str] = mapped_column(Text, default="")
+    execution_route: Mapped[str] = mapped_column(String, default="llm", index=True)
+    llm_provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    llm_model: Mapped[str | None] = mapped_column(String, nullable=True)
+    llm_prompt: Mapped[str] = mapped_column(Text, default="")
+    feedback: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)

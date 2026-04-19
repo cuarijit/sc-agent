@@ -1,0 +1,9 @@
+{
+  "slot_key": "pos_hourly",
+  "display_name": "Hourly POS",
+  "description": "Point-of-sale units sold per SKU/store at hourly grain. Drives pos_signal_divergence, short_term_demand_spike, real_time_shortage_at_current_pos, pos_velocity_surge, and short-horizon re-forecast.",
+  "is_required": false,
+  "required_fields": ["sku", "node_id", "timestamp_hour", "units_sold"],
+  "optional_fields": ["on_hand_snapshot_qty"],
+  "grain_hint": "sku_location_hour"
+}

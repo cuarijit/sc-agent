@@ -7,9 +7,7 @@ import { type GridColDef, type GridRenderCellParams } from "@mui/x-data-grid";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import { Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-
-
+import { LineChart } from "../charts";
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
@@ -388,43 +386,18 @@ export default function DemandSupplyIntegrationPage() {
                 Demand vs supply by week
               </Typography>
               <div className="chart-shell" style={{ minHeight: 320 }}>
-                <ResponsiveContainer width="100%" height={340}>
-                  <ComposedChart data={gapByWeekWithCoverage} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="week" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                    <Tooltip
-                      formatter={(value: number, name: string) =>
-                        name === "Coverage %"
-                          ? [`${value.toFixed(1)}%`, name]
-                          : [value.toLocaleString(undefined, { maximumFractionDigits: 0 }), name]
-                      }
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar yAxisId="left" dataKey="demand" name="Demand" fill="#2563eb" radius={[3, 3, 0, 0]} barSize={18} />
-                    <Bar yAxisId="left" dataKey="supply" name="Supply" fill="#16a34a" radius={[3, 3, 0, 0]} barSize={18} />
-                    <Line
-                      yAxisId="right"
-                      type="monotone"
-                      dataKey="gap"
-                      name="Gap"
-                      stroke="#dc2626"
-                      strokeWidth={2}
-                      strokeDasharray="6 3"
-                      dot={false}
-                    />
-                    <Line
-                      yAxisId="right"
-                      type="monotone"
-                      dataKey="coverage"
-                      name="Coverage %"
-                      stroke="#d97706"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                <LineChart
+                  chartId="demand-supply-gap-by-week"
+                  data={gapByWeekWithCoverage}
+                  xKey="week"
+                  height={340}
+                  series={[
+                    { field: "demand", label: "Demand", type: "bar", color: "#2563eb" },
+                    { field: "supply", label: "Supply", type: "bar", color: "#16a34a" },
+                    { field: "gap", label: "Gap", type: "line", color: "#dc2626", strokeWidth: 2, strokeDasharray: "dashed", showDot: false },
+                    { field: "coverage", label: "Coverage %", type: "line", color: "#d97706", strokeWidth: 2, showDot: false },
+                  ]}
+                />
               </div>
 
               {/* ── Transposed time-phased grid ── */}

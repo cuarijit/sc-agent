@@ -1,0 +1,39 @@
+{
+  "instance_id": "meio-data-assistant",
+  "agent_type": "data_search_agent",
+  "display_name": "MEIO Data Assistant",
+  "icon": "AutoAwesomeOutlined",
+  "button_text": "Data Search",
+  "button_style": "icon_only",
+  "tooltip_text": "RAG Data Search Assistant",
+  "description": "RAG-powered natural language search over MEIO analytics data",
+  "source_directory": null,
+  "config_ref": "analytics.json",
+  "module_slug": "meio-replenishment",
+  "type_specific_config": {
+    "ui": {
+      "placeholder_text": "Ask about orders, inventory, exceptions...",
+      "default_llm_provider": "openai",
+      "default_llm_model": "gpt-4.1-mini",
+      "max_preview_rows": 10,
+      "enable_charts": true,
+      "grid_collapsed_default": true,
+      "chart_palette": [
+        "#2563eb",
+        "#16a34a",
+        "#f59e0b",
+        "#7c3aed",
+        "#ef4444",
+        "#0ea5e9"
+      ]
+    },
+    "behavior_overrides": {
+      "ui_behavior": {
+        "row_limit_default": 5000
+      }
+    }
+  },
+  "is_active": true,
+  "created_at": "2026-04-11T01:22:31Z",
+  "updated_at": "2026-04-12T06:47:49Z"
+}

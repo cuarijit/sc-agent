@@ -1,0 +1,44 @@
+{
+  "instance_id": "stockout-resolver",
+  "agent_type": "inventory_diagnostic_agent",
+  "display_name": "Stockout Resolver",
+  "description": "Service-level focused agent: detects projected stockouts and recommends inbound resolutions (transfer, expedite, reroute, reallocate).",
+  "icon": "WarningAmberOutlined",
+  "button_text": "Stockout Resolver",
+  "button_style": "icon_and_text",
+  "tooltip_text": "Focus: protect service level by clearing projected stockouts",
+  "module_slug": "meio-replenishment",
+  "is_active": true,
+  "type_specific_config": {
+    "planning_horizon_weeks": 12,
+    "enabled_intents": ["show", "diagnose", "solve", "simulate", "execute"],
+    "enabled_library": {
+      "problem_templates": ["projected_stockout"],
+      "root_cause_templates": ["late_supply", "network_imbalance", "inventory_policy_issue", "blocked_inventory"],
+      "resolution_families": ["transfer_excess", "expedite_inbound", "reroute_intransit", "reallocate_demand", "release_blocked_stock"],
+      "action_templates": ["create_task", "create_recommendation_record", "create_webhook_payload", "export_action_csv"]
+    },
+    "decision_graph_overrides": {"disabled_edges": []},
+    "per_template_overrides": {
+      "projected_stockout": {
+        "severity": {"critical_if_weeks_until_breach": 2, "warning_if_weeks_until_breach": 4, "default": "warning"}
+      },
+      "late_supply": {"weight": 0.4}
+    },
+    "prioritization_weights": {
+      "revenue_at_risk": 0.30,
+      "stockout_severity": 0.35,
+      "customer_facing_flag": 0.20,
+      "abc_class": 0.10,
+      "lead_time_weeks": 0.05
+    },
+    "execute_mode": {"dispatch": false, "delivery_mode": "recommendation_record", "webhook_url": null, "csv_path": "/tmp/stockout_resolver"},
+    "action_permissions_per_intent": {
+      "show": [],
+      "diagnose": [],
+      "solve": ["create_recommendation_record", "create_task", "export_action_csv"],
+      "simulate": [],
+      "execute": ["create_webhook_payload", "create_task", "create_recommendation_record", "export_action_csv"]
+    }
+  }
+}

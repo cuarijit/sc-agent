@@ -1,0 +1,159 @@
+{
+  "type_key": "data_search_agent",
+  "display_name": "Data Search Assistant",
+  "description": "Queries the MEIO SQLite database via natural language and applies results to global filters.",
+  "status": "active",
+  "available_actions": [
+    "query",
+    "set_page_filter",
+    "export_results",
+    "explain"
+  ],
+  "handler_hint": "rag_chat",
+  "assistant_mode": "meio-data-assistant",
+  "template_version": 2,
+  "config_schema": {
+    "type": "object",
+    "properties": {}
+  },
+  "default_config": {},
+  "default_instance": {
+    "icon": "AutoAwesomeOutlined",
+    "button_text": "Data Search",
+    "button_style": "icon_only",
+    "tooltip_text": "RAG Data Search Assistant",
+    "config_ref": "analytics.json"
+  },
+  "ui_hints": {
+    "sections": []
+  },
+  "behavior": {
+    "scope_detection": {
+      "db_signal_keywords": [
+        "sku",
+        "location",
+        "order",
+        "inventory",
+        "forecast",
+        "supplier",
+        "node",
+        "network",
+        "exception",
+        "recommendation",
+        "parameter",
+        "table",
+        "column",
+        "database",
+        "nif",
+        "sql",
+        "count",
+        "list",
+        "show",
+        "alert",
+        "severity",
+        "region",
+        "category",
+        "shipment",
+        "shipto",
+        "shipfrom",
+        "meio"
+      ],
+      "out_of_scope_keywords": [
+        "joke",
+        "poem",
+        "story",
+        "weather",
+        "news",
+        "movie",
+        "song",
+        "translate",
+        "email",
+        "resume",
+        "who are you",
+        "hello",
+        "hi "
+      ],
+      "out_of_scope_response": "I can only help with questions about the MEIO database."
+    },
+    "ambiguity_detection": {
+      "weak_keywords": [
+        "help",
+        "analyze",
+        "summary",
+        "insights",
+        "status",
+        "show data"
+      ],
+      "empty_question_message": "Please ask a question about orders, inventory, exceptions, or parameters.",
+      "too_broad_message": "Your question is too broad.",
+      "ambiguity_follow_ups": [
+        "Which metric should I optimize for (count, quantity, cost, or service level)?",
+        "What scope should I use (SKU, location/node, region, supplier, or time window)?",
+        "Do you want raw rows, top/bottom ranking, or an aggregate trend?"
+      ]
+    },
+    "row_limits": {
+      "max_rows_default": 2000,
+      "row_limit_default": 2000
+    },
+    "chat_session_limit": 32,
+    "system_prompt": "You generate safe read-only SQLite SQL.",
+    "system_prompt_sections": {
+      "sql_output_rule": "Output ONLY SQL. One statement. Use SELECT or WITH. No markdown fences.",
+      "schema_rules": "Return exactly one SELECT/CTE SQL statement. Never use SELECT *. For list/detail outputs, include alert_id and recommendation_id columns whenever applicable and present in schema. If LIMIT is needed, use LIMIT 2000 by default unless user explicitly asks for fewer rows. For list/detail outputs (non-aggregate), include the Link column when present in schema. Column alias alignment for filter apply (mandatory where applicable): use aliases matching global-filter names in SQL output columns such as sku, location, alert_id, alert_type, severity, order_id, order_type, status, exception_reason, ship_from_node_id, ship_to_node_id, parameter_code, issue_type, source_mode, node_type, run_id, region, category, supplier, exception_status. Superlative intent rule: if user asks for most/top/highest/lowest/least/bottom/maximum/minimum/biggest/smallest, you MUST use ORDER BY on the relevant metric and apply LIMIT. Use DESC for most/top/highest/maximum/biggest; use ASC for least/lowest/bottom/minimum/smallest. Use LIMIT 1 for singular asks and LIMIT N for top N/bottom N asks. If no rows, do one broader rewrite attempt only; then return no matching records found. GROUP BY sort default (mandatory): queries with GROUP BY must include ORDER BY. Default ORDER BY direction must be DESC unless user explicitly asks for ascending/increasing/oldest/lowest-first ordering. For time-grouped outputs (month/year), default latest periods first (ORDER BY year DESC, month DESC) unless prompt says otherwise. For grouped who has the most/least/lowest/bottom questions: GROUP BY entity column, ORDER BY aggregate by intent, then LIMIT 1 (or N).",
+      "text_matching": "Text match guidance: for text comparisons in WHERE, use wildcard contains LIKE '%value%'. For case-insensitive search use LOWER(COALESCE(<col>, '')) LIKE '%value%'. For categorical/text filters (including severity, alert_type, status, exception_reason, order_type, region), ALWAYS use LOWER(COALESCE(<col>, '')) LIKE '%value%' and NEVER use equality (=) for text matching. For description search, check both \"Brief Material Description\" and \"Material_Description\" when those columns exist. Disambiguation rule (mandatory): phrases like created by month/year refer to date column \"Created\" and date grouping (strftime), not person column \"Created_By\". Use \"Created_By\" only when prompt clearly asks for creator/requestor identity.",
+      "date_resolution": "Date comparison guidance: reference date for relative comparisons is 2026-03-02. Use half-open intervals [start, end) to avoid overlap. Interpret last/next month|quarter|year|week as complete periods. Interpret past/future N units as rolling windows relative to the reference date. SQLite date filter form: date(<date_col>) >= date('YYYY-MM-DD') AND date(<date_col>) < date('YYYY-MM-DD'). For quarter/month/year grouping use strftime('%Y', ...), strftime('%m', ...), and month arithmetic. For count by month and year use: strftime('%Y', date(\"Created\")) AS year, strftime('%m', date(\"Created\")) AS month, COUNT(*) AS nif_count, then GROUP BY year, month and ORDER BY year, month. If question has no clear date expression, avoid assuming date filters. Support date range filters for past/future, multiple months/quarters/years, and numeric spans (for example: last 2 years, next 2 quarters). Allowed date-shift units: day, week, month, quarter, year; quarter shift = 3 months. SQLite date-shift forms: date(<date_col>, '+N day|month|year'); week => '+(7*N) day'; quarter => '+(3*N) month'. WHERE/HAVING compare form: date(<date_col>, '+N month') >= date('YYYY-MM-DD'). Date grouping form: strftime('%Y', <date_col>), strftime('%m', <date_col>).",
+      "arithmetic": "Arithmetic and function guidance: arithmetic operators allowed +, -, *, /. Arithmetic on table columns must use numeric columns only. HAVING and WHERE may compare arithmetic expressions if source columns follow numeric/date rules. Do not invent derived expressions when required source columns are missing. If requested expression cannot be mapped confidently to schema columns, return empty SQL with low confidence. Allowed SQLite functions only: ABS, AVG, CAST, COALESCE, COUNT, DATE, DATETIME, JULIANDAY, LOWER, MAX, MIN, NULLIF, ROUND, STRFTIME, SUM, TIME, UPPER.",
+      "out_of_scope_directive": "For out-of-scope questions, respond exactly: \"I can only help with questions about the MEIO database.\""
+    },
+    "latency_scope_guidance": "Scope: Only handle questions answerable from this MEIO database. LATENCY MODE (MANDATORY): Do not greet. For in-scope database questions, first action must be exactly one call to meio.db. Do not ask clarifying questions before first query unless impossible to map to schema. Never SELECT *; select only required columns. If LIMIT is needed, use LIMIT 2000 by default unless user explicitly asks for fewer rows. If no rows, do one broader rewrite attempt only; then return no matching records found. Final user answer: max 10 lines, no SQL, no internal reasoning, no repeated rows, and no fabricated values. Do not claim display limits unless tool output explicitly says results were truncated. Text matching, disambiguation, arithmetic, date, superlative, and grouping rules are mandatory.",
+    "reasoning_system_prompt": "You are a data analyst assistant. Use only the supplied SQL result to answer. Do not invent facts. Return JSON only with keys: answer_text (string), follow_up_questions (array of 2-4 strings), reasoning_summary (string, max 240 chars), confidence_score (number between 0 and 1).",
+    "follow_up_defaults": {
+      "aggregate_keywords": [
+        "count",
+        "trend",
+        "group",
+        "aggregate",
+        "sum",
+        "avg",
+        "average"
+      ],
+      "aggregate_suggestion": "Do you want this aggregated by week or month?",
+      "top_rows_suggestion": "Do you want top 10 rows by highest quantity/cost?",
+      "exception_narrowing_suggestion": "Should I narrow this to exceptions only?",
+      "location_breakdown_suggestion": "Should I break this down by location/node?",
+      "apply_filters_suggestion": "Should I apply these results to global filters?",
+      "max_suggestions": 3
+    },
+    "suggest_templates": [
+      {
+        "label": "Top 10 exceptions by severity",
+        "value": "Show the top 10 open exceptions by severity"
+      },
+      {
+        "label": "Orders by supplier last 30 days",
+        "value": "Show order counts by supplier for the last 30 days"
+      },
+      {
+        "label": "Stockout risk SKUs",
+        "value": "Which SKUs have the highest stockout risk right now?"
+      },
+      {
+        "label": "Alerts by region",
+        "value": "Show alert counts grouped by region"
+      },
+      {
+        "label": "Parameter issues by type",
+        "value": "Show parameter issues grouped by issue type"
+      }
+    ],
+    "ui_behavior": {
+      "action_labels": {
+        "apply_to_page_filter": "Apply to Global Filter"
+      },
+      "enable_charts": true,
+      "grid_collapsed_default": false,
+      "row_limit_default": 2000
+    }
+  }
+}

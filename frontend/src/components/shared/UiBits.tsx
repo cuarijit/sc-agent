@@ -1,21 +1,61 @@
 import type { PropsWithChildren } from "react";
-import { Chip, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
+import { Box, Chip, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
-import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+import LineChart from "../../charts/LineChart";
 import type { EffectiveParameterValue, OptionDetail, ParameterException, ProjectionPoint, RecommendationSummary } from "../../types";
 
-export function SectionCard({ title, subtitle, children }: PropsWithChildren<{ title: string; subtitle?: string }>) {
+export function SectionCard({ title, subtitle, children }: PropsWithChildren<{ title: string; subtitle?: string; helpId?: string }>) {
   return (
-    <Paper elevation={0} className="content-card section-card">
-      <Stack spacing={1} className="section-card-stack">
-        <div className="section-card-head">
-          <Typography variant="h6" className="section-card-title">{title}</Typography>
-          {subtitle ? <Typography variant="caption" color="text.secondary" className="section-card-subtitle">{subtitle}</Typography> : null}
-        </div>
-        <div className="section-card-body">
+    <Paper
+      elevation={0}
+      className="content-card section-card"
+      sx={{
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: "6px",
+        overflow: "hidden",
+        bgcolor: "background.paper",
+      }}
+    >
+      <Stack spacing={0} className="section-card-stack">
+        <Box
+          className="section-card-head"
+          sx={{
+            px: 1.75,
+            py: 1,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            background: "linear-gradient(180deg, rgba(248,252,255,0.9) 0%, rgba(255,255,255,0.6) 100%)",
+            "html[data-theme='dark'] &": {
+              background: "linear-gradient(180deg, rgba(11,74,111,0.18) 0%, transparent 100%)",
+            },
+          }}
+        >
+          <Typography
+            className="section-card-title"
+            sx={{
+              fontFamily: '"Montserrat", "IBM Plex Sans", sans-serif',
+              fontWeight: 700,
+              fontSize: "12px",
+              color: "text.primary",
+              lineHeight: 1.4,
+            }}
+          >
+            {title}
+          </Typography>
+          {subtitle ? (
+            <Typography
+              className="section-card-subtitle"
+              sx={{ fontSize: "10px", color: "text.secondary", fontFamily: '"IBM Plex Sans", sans-serif', mt: 0.25 }}
+            >
+              {subtitle}
+            </Typography>
+          ) : null}
+        </Box>
+        <Box className="section-card-body" sx={{ p: 1.75 }}>
           {children}
-        </div>
+        </Box>
       </Stack>
     </Paper>
   );
@@ -54,35 +94,32 @@ export function RecommendationTable({ rows }: { rows: RecommendationSummary[] })
 
 export function InventoryProjectionChart({ data }: { data: ProjectionPoint[] }) {
   return (
-    <div className="chart-shell">
-      <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="week_start" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Line type="monotone" dataKey="ending_qty" stroke="#2563eb" strokeWidth={3} name="Ending Qty" />
-          <Line type="monotone" dataKey="safety_stock_qty" stroke="#f97316" strokeDasharray="5 5" name="Safety Stock" />
-        </LineChart>
-      </ResponsiveContainer>
+    <div className="chart-shell" style={{ height: 280 }}>
+      <LineChart
+        chartId="inventory-projection"
+        data={data as unknown as Record<string, unknown>[]}
+        xKey="week_start"
+        series={[
+          { field: "ending_qty", label: "Ending Qty", color: "#3C95D1", strokeWidth: 3 },
+          { field: "safety_stock_qty", label: "Safety Stock", color: "#d97706", strokeDasharray: "dashed" },
+        ]}
+      />
     </div>
   );
 }
 
 export function ScenarioDeltaChart({ data }: { data: RecommendationSummary[] }) {
   return (
-    <div className="chart-shell">
-      <ResponsiveContainer width="100%" height={280}>
-        <AreaChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="sku" />
-          <YAxis />
-          <Tooltip />
-          <Legend />
-          <Area type="monotone" dataKey="shortage_qty" stroke="#dc2626" fill="rgba(220,38,38,0.24)" name="Scenario Shortage" />
-        </AreaChart>
-      </ResponsiveContainer>
+    <div className="chart-shell" style={{ height: 280 }}>
+      <LineChart
+        chartId="scenario-delta"
+        data={data as unknown as Record<string, unknown>[]}
+        xKey="sku"
+        renderAsArea
+        series={[
+          { field: "shortage_qty", label: "Scenario Shortage", color: "#dc2626" },
+        ]}
+      />
     </div>
   );
 }

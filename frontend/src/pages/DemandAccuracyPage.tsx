@@ -29,8 +29,7 @@ import { type GridColDef, type GridRenderCellParams } from "@mui/x-data-grid";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
-import { Area, Bar, CartesianGrid, Cell, ComposedChart, Legend, Line, Pie, PieChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from "recharts";
-
+import { LineChart, PieChart, ScatterChart } from "../charts";
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
@@ -327,13 +326,25 @@ export default function DemandAccuracyPage() {
 
   // Scatter-style data: each exception as a point for the deviation distribution chart
   const exceptionScatter = useMemo(() => {
-    return exceptionRowsAll.map((r) => ({
-      week: r.week_start,
-      deviation: Math.abs(Number(r.deviation_pct) || 0),
-      severity: String(r.severity || "").toLowerCase(),
-      sku: r.sku,
-      id: r.exception_id,
-    }));
+    return exceptionRowsAll.map((r) => {
+      const sev = String(r.severity || "").toLowerCase();
+      const color =
+        sev === "critical" ? "#dc2626" :
+        sev === "high" ? "#f59e0b" :
+        sev === "medium" ? "#3b82f6" :
+        "#94a3b8";
+      // ECharts wrapper expects numeric x for ScatterChart; convert ISO date to days
+      const weekTs = new Date(`${r.week_start}T00:00:00Z`).getTime();
+      return {
+        week: r.week_start,
+        weekTs,
+        deviation: Math.abs(Number(r.deviation_pct) || 0),
+        severity: sev,
+        sku: r.sku,
+        id: r.exception_id,
+        __bubbleColor: color,
+      };
+    });
   }, [exceptionRowsAll]);
 
   // Distribution by exception type
@@ -652,19 +663,17 @@ export default function DemandAccuracyPage() {
                   Forecast vs Actual & MAPE trend
                 </Typography>
                 <div className="chart-shell">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <ComposedChart data={weeklyAggregates} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="week_start" tick={{ fontSize: 10 }} />
-                      <YAxis yAxisId="left" tick={{ fontSize: 10 }} />
-                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} unit="%" />
-                      <Tooltip contentStyle={{ fontSize: 11 }} />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Bar yAxisId="left" dataKey="avg_forecast_qty" name="Forecast Qty" fill="#2563eb" radius={[3, 3, 0, 0]} barSize={16} />
-                      <Bar yAxisId="left" dataKey="avg_actual_qty" name="Actual Qty" fill="#16a34a" radius={[3, 3, 0, 0]} barSize={16} />
-                      <Line yAxisId="right" type="monotone" dataKey="avg_mape" name="Avg MAPE %" stroke="#dc2626" strokeWidth={2} dot={{ r: 3 }} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
+                  <LineChart
+                    chartId="demand-accuracy-forecast-vs-actual"
+                    data={weeklyAggregates}
+                    xKey="week_start"
+                    height={300}
+                    series={[
+                      { field: "avg_forecast_qty", label: "Forecast Qty", type: "bar", color: "#2563eb" },
+                      { field: "avg_actual_qty", label: "Actual Qty", type: "bar", color: "#16a34a" },
+                      { field: "avg_mape", label: "Avg MAPE %", type: "line", color: "#dc2626", strokeWidth: 2 },
+                    ]}
+                  />
                 </div>
               </Box>
 
@@ -711,26 +720,18 @@ export default function DemandAccuracyPage() {
                     Weekly exception volume & deviation severity
                   </Typography>
                   <div className="chart-shell">
-                    <ResponsiveContainer width="100%" height={260}>
-                      <ComposedChart data={exceptionWeekly} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="devGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#dc2626" stopOpacity={0.15} />
-                            <stop offset="95%" stopColor="#dc2626" stopOpacity={0.02} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis dataKey="week_start" tick={{ fontSize: 9 }} tickFormatter={(v: string) => v.slice(5)} />
-                        <YAxis yAxisId="left" tick={{ fontSize: 10 }} label={{ value: "Count", angle: -90, position: "insideLeft", style: { fontSize: 9, fill: "#94a3b8" } }} />
-                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} unit="%" label={{ value: "Avg Dev %", angle: 90, position: "insideRight", style: { fontSize: 9, fill: "#94a3b8" } }} />
-                        <Tooltip contentStyle={{ fontSize: 11 }} />
-                        <Legend wrapperStyle={{ fontSize: 10 }} />
-                        <Area yAxisId="right" type="monotone" dataKey="avgDev" name="Avg Deviation %" fill="url(#devGradient)" stroke="#dc2626" strokeWidth={2} dot={false} />
-                        <Bar yAxisId="left" dataKey="critHigh" name="Critical + High" fill="#e11d48" radius={[3, 3, 0, 0]} barSize={12} />
-                        <Bar yAxisId="left" dataKey="total" name="Total Exceptions" fill="#3b82f6" radius={[3, 3, 0, 0]} barSize={12} opacity={0.5} />
-                        <Line yAxisId="right" type="monotone" dataKey="resolutionRate" name="Resolution Rate %" stroke="#16a34a" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 3, fill: "#16a34a" }} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
+                    <LineChart
+                      chartId="demand-accuracy-exception-weekly"
+                      data={exceptionWeekly}
+                      xKey="week_start"
+                      height={260}
+                      series={[
+                        { field: "avgDev", label: "Avg Deviation %", type: "area", color: "#dc2626", strokeWidth: 2, showDot: false },
+                        { field: "critHigh", label: "Critical + High", type: "bar", color: "#e11d48" },
+                        { field: "total", label: "Total Exceptions", type: "bar", color: "#3b82f6" },
+                        { field: "resolutionRate", label: "Resolution Rate %", type: "line", color: "#16a34a", strokeWidth: 2, strokeDasharray: "dashed" },
+                      ]}
+                    />
                   </div>
                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10, mt: 0.5, display: "block" }}>
                     Bars = exception count (solid = critical+high, translucent = all); red area = avg deviation %; dashed green = resolution rate
@@ -745,30 +746,23 @@ export default function DemandAccuracyPage() {
                       Severity breakdown
                     </Typography>
                     <Stack direction="row" alignItems="center" spacing={1}>
-                      <ResponsiveContainer width={100} height={100}>
-                        <PieChart>
-                          <Pie
-                            data={[
-                              { name: "Critical", value: severityCounts.critical ?? 0 },
-                              { name: "High", value: severityCounts.high ?? 0 },
-                              { name: "Medium", value: severityCounts.medium ?? 0 },
-                              { name: "Low", value: severityCounts.low ?? 0 },
-                            ]}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={28}
-                            outerRadius={45}
-                            paddingAngle={2}
-                            dataKey="value"
-                          >
-                            <Cell fill="#dc2626" />
-                            <Cell fill="#f59e0b" />
-                            <Cell fill="#3b82f6" />
-                            <Cell fill="#94a3b8" />
-                          </Pie>
-                          <Tooltip contentStyle={{ fontSize: 11 }} />
-                        </PieChart>
-                      </ResponsiveContainer>
+                      <Box sx={{ width: 100, height: 100 }}>
+                        <PieChart
+                          chartId="demand-accuracy-severity-pie"
+                          data={[
+                            { name: "Critical", value: severityCounts.critical ?? 0 },
+                            { name: "High", value: severityCounts.high ?? 0 },
+                            { name: "Medium", value: severityCounts.medium ?? 0 },
+                            { name: "Low", value: severityCounts.low ?? 0 },
+                          ]}
+                          nameKey="name"
+                          valueKey="value"
+                          innerRadius={28}
+                          outerRadius={45}
+                          showLabels="false"
+                          height={100}
+                        />
+                      </Box>
                       <Stack spacing={0.5}>
                         {([
                           { label: "Critical", count: severityCounts.critical ?? 0, color: "#dc2626" },
@@ -825,24 +819,25 @@ export default function DemandAccuracyPage() {
                   Each dot is an exception. Higher = larger deviation. Color = severity. Spot outliers and clustering patterns.
                 </Typography>
                 <div className="chart-shell">
-                  <ResponsiveContainer width="100%" height={180}>
-                    <ScatterChart margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="week" tick={{ fontSize: 9 }} tickFormatter={(v: string) => v.slice(5)} />
-                      <YAxis dataKey="deviation" tick={{ fontSize: 10 }} unit="%" name="Deviation %" />
-                      <ZAxis range={[30, 30]} />
-                      <Tooltip
-                        contentStyle={{ fontSize: 11 }}
-                        formatter={(value: number, name: string) => name === "deviation" ? [`${value.toFixed(1)}%`, "Deviation"] : [value, name]}
-                        labelFormatter={(label) => `Week: ${label}`}
-                      />
-                      <Scatter data={exceptionScatter.filter((d) => d.severity === "critical")} name="Critical" fill="#dc2626" />
-                      <Scatter data={exceptionScatter.filter((d) => d.severity === "high")} name="High" fill="#f59e0b" />
-                      <Scatter data={exceptionScatter.filter((d) => d.severity === "medium")} name="Medium" fill="#3b82f6" />
-                      <Scatter data={exceptionScatter.filter((d) => d.severity === "low")} name="Low" fill="#94a3b8" opacity={0.6} />
-                      <Legend wrapperStyle={{ fontSize: 10 }} />
-                    </ScatterChart>
-                  </ResponsiveContainer>
+                  <ScatterChart
+                    chartId="demand-accuracy-deviation-scatter"
+                    data={exceptionScatter}
+                    xField="weekTs"
+                    yField="deviation"
+                    height={180}
+                    xLabel="Week"
+                    yLabel="Deviation %"
+                    tooltipFields={["sku", "severity"]}
+                    aliasOf={(f) => f === "weekTs" ? "Week" : f === "deviation" ? "Deviation %" : f === "sku" ? "SKU" : f === "severity" ? "Severity" : f}
+                    formatField={(f, v) => {
+                      if (f === "weekTs" && typeof v === "number") {
+                        const d = new Date(v);
+                        return d.toISOString().slice(5, 10);
+                      }
+                      if (f === "deviation" && typeof v === "number") return `${v.toFixed(1)}%`;
+                      return v == null ? "" : String(v);
+                    }}
+                  />
                 </div>
               </Box>
 

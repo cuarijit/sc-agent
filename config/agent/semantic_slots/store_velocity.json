@@ -1,0 +1,9 @@
+{
+  "slot_key": "store_velocity",
+  "display_name": "Store Velocity",
+  "description": "Per-SKU units-per-hour velocity at each store, with optional peak hour. Drives store_fair_share_deviation, store_velocity_mismatch, and velocity-weighted allocation rebalancing.",
+  "is_required": false,
+  "required_fields": ["sku", "node_id", "units_per_hour_avg"],
+  "optional_fields": ["date", "peak_hour_local", "peak_hour_multiplier"],
+  "grain_hint": "sku_location_day"
+}

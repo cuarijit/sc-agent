@@ -24,18 +24,7 @@ import { type GridColDef } from "@mui/x-data-grid";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip as RechartsTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-
+import { LineChart } from "../charts";
 import type { ShellContextValue } from "../components/layout/AppShellLayout";
 import KpiCard, { KpiCardRow } from "../components/shared/KpiCard";
 import SmartDataGrid from "../components/shared/SmartDataGrid";
@@ -272,20 +261,6 @@ export default function DemandCollaborativePage() {
     [sortedWeeks],
   );
 
-  const chartYDomain = useMemo((): [number, number] | ["auto", "auto"] => {
-    if (!chartData.length) return ["auto", "auto"];
-    let min = Infinity;
-    let max = -Infinity;
-    for (const d of chartData) {
-      const stackTotal = d.sales + d.customer + d.supplyChain + d.marketing;
-      min = Math.min(min, d.consensus, stackTotal);
-      max = Math.max(max, d.consensus, stackTotal);
-    }
-    if (!Number.isFinite(min)) return ["auto", "auto"];
-    const pad = (max - min) * 0.08;
-    return [Math.max(0, min - pad), max + pad];
-  }, [chartData]);
-
   // Editable metric rows configuration for the workbench table
   const editableMetrics: { label: string; field: EditableField; color: string }[] = [
     { label: "Customer Input", field: "customer_input", color: "#16a34a" },
@@ -355,20 +330,6 @@ export default function DemandCollaborativePage() {
       })),
     [reconWeekAgg],
   );
-
-  const reconChartYDomain = useMemo((): [number, number] | ["auto", "auto"] => {
-    if (!reconChartData.length) return ["auto", "auto"];
-    let min = Infinity;
-    let max = -Infinity;
-    for (const d of reconChartData) {
-      const stackTotal = d.sales + d.customer + d.supplyChain + d.marketing;
-      min = Math.min(min, d.consensus, stackTotal);
-      max = Math.max(max, d.consensus, stackTotal);
-    }
-    if (!Number.isFinite(min)) return ["auto", "auto"];
-    const pad = (max - min) * 0.08;
-    return [Math.max(0, min - pad), max + pad];
-  }, [reconChartData]);
 
   const reconTransposedRows = useMemo<TransposedRow[]>(() => {
     const result: TransposedRow[] = [
@@ -565,22 +526,20 @@ export default function DemandCollaborativePage() {
                     Weekly Consensus Chart
                   </Typography>
                   <div className="chart-shell">
-                    <ResponsiveContainer width="100%" height={300}>
-                      <ComposedChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="week" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
-                        <YAxis yAxisId="left" domain={chartYDomain} tick={{ fontSize: 11 }} tickFormatter={(v: number) => Math.round(v).toLocaleString()} />
-                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
-                        <RechartsTooltip formatter={(value: number, name: string) => name === "Variance %" ? `${value.toFixed(1)}%` : Math.round(value).toLocaleString()} />
-                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                        <Bar yAxisId="left" dataKey="sales" name="Sales Input" stackId="inputs" fill="#2563eb" barSize={20} isAnimationActive={false} />
-                        <Bar yAxisId="left" dataKey="customer" name="Customer Input" stackId="inputs" fill="#16a34a" barSize={20} isAnimationActive={false} />
-                        <Bar yAxisId="left" dataKey="supplyChain" name="Supply Chain Input" stackId="inputs" fill="#f59e0b" barSize={20} isAnimationActive={false} />
-                        <Bar yAxisId="left" dataKey="marketing" name="Marketing Input" stackId="inputs" fill="#883DCF" barSize={20} isAnimationActive={false} />
-                        <Line yAxisId="left" type="monotone" dataKey="consensus" name="Consensus Qty" stroke="#e11d48" strokeWidth={3} dot={{ r: 4, fill: "#e11d48", stroke: "#fff", strokeWidth: 1 }} isAnimationActive={false} />
-                        <Line yAxisId="right" type="monotone" dataKey="variance" name="Variance %" stroke="#dc2626" strokeWidth={2} strokeDasharray="6 4" isAnimationActive={false} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
+                    <LineChart
+                      chartId="demand-collab-workbench"
+                      data={chartData}
+                      xKey="week"
+                      height={300}
+                      series={[
+                        { field: "sales", label: "Sales Input", type: "bar", color: "#2563eb", stacked: true },
+                        { field: "customer", label: "Customer Input", type: "bar", color: "#16a34a", stacked: true },
+                        { field: "supplyChain", label: "Supply Chain Input", type: "bar", color: "#f59e0b", stacked: true },
+                        { field: "marketing", label: "Marketing Input", type: "bar", color: "#883DCF", stacked: true },
+                        { field: "consensus", label: "Consensus Qty", type: "line", color: "#e11d48", strokeWidth: 3 },
+                        { field: "variance", label: "Variance %", type: "line", color: "#dc2626", strokeWidth: 2, strokeDasharray: "dashed" },
+                      ]}
+                    />
                   </div>
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
                     Stacked bars show input by function; solid line is consensus qty (recalculated from edits); dashed line is variance %.
@@ -710,35 +669,31 @@ export default function DemandCollaborativePage() {
                     Stacked Input Volume by SKU
                   </Typography>
                   <div className="chart-shell">
-                    <ResponsiveContainer width="100%" height={320}>
-                      <ComposedChart
-                        data={(() => {
-                          const map = new Map<string, { sku: string; Sales: number; Customer: number; SupplyChain: number; Marketing: number; Consensus: number }>();
-                          for (const r of rows) {
-                            const cur = map.get(r.sku) ?? { sku: r.sku, Sales: 0, Customer: 0, SupplyChain: 0, Marketing: 0, Consensus: 0 };
-                            cur.Sales += r.sales_input;
-                            cur.Customer += r.customer_input;
-                            cur.SupplyChain += r.supply_chain_input;
-                            cur.Marketing += r.marketing_input;
-                            cur.Consensus += r.consensus_qty;
-                            map.set(r.sku, cur);
-                          }
-                          return [...map.values()];
-                        })()}
-                        margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="sku" tick={{ fontSize: 11 }} interval={0} angle={-28} textAnchor="end" height={56} />
-                        <YAxis tick={{ fontSize: 11 }} />
-                        <RechartsTooltip formatter={(v: number) => Math.round(v).toLocaleString()} />
-                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                        <Bar dataKey="Sales" stackId="inputs" fill="#2563eb" />
-                        <Bar dataKey="Customer" stackId="inputs" fill="#16a34a" />
-                        <Bar dataKey="SupplyChain" name="Supply Chain" stackId="inputs" fill="#f59e0b" />
-                        <Bar dataKey="Marketing" stackId="inputs" fill="#883DCF" />
-                        <Line type="monotone" dataKey="Consensus" stroke="#0f172a" strokeWidth={3} isAnimationActive={false} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
+                    <LineChart
+                      chartId="demand-collab-by-sku"
+                      data={(() => {
+                        const map = new Map<string, { sku: string; Sales: number; Customer: number; SupplyChain: number; Marketing: number; Consensus: number }>();
+                        for (const r of rows) {
+                          const cur = map.get(r.sku) ?? { sku: r.sku, Sales: 0, Customer: 0, SupplyChain: 0, Marketing: 0, Consensus: 0 };
+                          cur.Sales += r.sales_input;
+                          cur.Customer += r.customer_input;
+                          cur.SupplyChain += r.supply_chain_input;
+                          cur.Marketing += r.marketing_input;
+                          cur.Consensus += r.consensus_qty;
+                          map.set(r.sku, cur);
+                        }
+                        return [...map.values()];
+                      })()}
+                      xKey="sku"
+                      height={320}
+                      series={[
+                        { field: "Sales", label: "Sales", type: "bar", color: "#2563eb", stacked: true },
+                        { field: "Customer", label: "Customer", type: "bar", color: "#16a34a", stacked: true },
+                        { field: "SupplyChain", label: "Supply Chain", type: "bar", color: "#f59e0b", stacked: true },
+                        { field: "Marketing", label: "Marketing", type: "bar", color: "#883DCF", stacked: true },
+                        { field: "Consensus", label: "Consensus", type: "line", color: "#0f172a", strokeWidth: 3 },
+                      ]}
+                    />
                   </div>
                 </Box>
 
@@ -839,22 +794,20 @@ export default function DemandCollaborativePage() {
                     Reconciliation — Weekly Input vs Consensus
                   </Typography>
                   <div className="chart-shell">
-                    <ResponsiveContainer width="100%" height={300}>
-                      <ComposedChart data={reconChartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="week" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
-                        <YAxis yAxisId="left" domain={reconChartYDomain} tick={{ fontSize: 11 }} tickFormatter={(v: number) => Math.round(v).toLocaleString()} />
-                        <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={(v: number) => `${v.toFixed(0)}%`} />
-                        <RechartsTooltip formatter={(value: number, name: string) => name === "Variance %" ? `${value.toFixed(1)}%` : Math.round(value).toLocaleString()} />
-                        <Legend wrapperStyle={{ fontSize: 11 }} />
-                        <Bar yAxisId="left" dataKey="sales" name="Sales Input" stackId="inputs" fill="#2563eb" barSize={20} isAnimationActive={false} />
-                        <Bar yAxisId="left" dataKey="customer" name="Customer Input" stackId="inputs" fill="#7c3aed" barSize={20} isAnimationActive={false} />
-                        <Bar yAxisId="left" dataKey="supplyChain" name="Supply Chain Input" stackId="inputs" fill="#0d9488" barSize={20} isAnimationActive={false} />
-                        <Bar yAxisId="left" dataKey="marketing" name="Marketing Input" stackId="inputs" fill="#f59e0b" barSize={20} isAnimationActive={false} />
-                        <Line yAxisId="left" type="monotone" dataKey="consensus" name="Consensus Qty" stroke="#dc2626" strokeWidth={3} isAnimationActive={false} />
-                        <Line yAxisId="right" type="monotone" dataKey="variance" name="Variance %" stroke="#94a3b8" strokeWidth={2} strokeDasharray="6 4" isAnimationActive={false} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
+                    <LineChart
+                      chartId="demand-collab-reconciliation"
+                      data={reconChartData}
+                      xKey="week"
+                      height={300}
+                      series={[
+                        { field: "sales", label: "Sales Input", type: "bar", color: "#2563eb", stacked: true },
+                        { field: "customer", label: "Customer Input", type: "bar", color: "#7c3aed", stacked: true },
+                        { field: "supplyChain", label: "Supply Chain Input", type: "bar", color: "#0d9488", stacked: true },
+                        { field: "marketing", label: "Marketing Input", type: "bar", color: "#f59e0b", stacked: true },
+                        { field: "consensus", label: "Consensus Qty", type: "line", color: "#dc2626", strokeWidth: 3 },
+                        { field: "variance", label: "Variance %", type: "line", color: "#94a3b8", strokeWidth: 2, strokeDasharray: "dashed" },
+                      ]}
+                    />
                   </div>
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
                     Stacked bars show input by function; solid line is consensus qty; dashed line is variance %.

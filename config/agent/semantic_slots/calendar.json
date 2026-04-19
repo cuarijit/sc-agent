@@ -1,0 +1,9 @@
+{
+  "slot_key": "calendar",
+  "display_name": "Calendar",
+  "description": "Week bucketing used across the agent. Defines the mapping from a date to a planning week. If no table is bound, the agent derives ISO-Monday weeks from demand_plan.week_start.",
+  "is_required": true,
+  "required_fields": ["week_start", "week_end"],
+  "optional_fields": ["week_index", "fiscal_period", "fiscal_year", "fiscal_quarter"],
+  "grain_hint": "week"
+}
