@@ -1,0 +1,92 @@
+{
+  "instance_id": "und-route-execution-sensing",
+  "agent_type": "demand_sensing_agent",
+  "display_name": "UND — Route-to-Market Sensing",
+  "description": "Tuned for United National Dairy (KSA). Senses real-time POS + route-level sell-through divergence, returns risk, and SKU mix mismatch by route. Answers what each truck should carry today, where sell-through is breaking down, and which routes need pre-positioning.",
+  "icon": "LocalShippingOutlined",
+  "button_text": "UND Route Sensing",
+  "button_style": "icon_and_text",
+  "tooltip_text": "UND-tuned route-to-market sensing — what each truck should carry, where returns are climbing, where to rebalance.",
+  "module_slug": "agentic-ai",
+  "is_active": false,
+  "type_specific_config": {
+    "sensing_horizon_hours": 24,
+    "divergence_threshold_pct": 15,
+    "ramadan_event_lookahead_days": 14,
+    "enabled_intents": ["show", "analyse", "diagnose", "solve", "simulate"],
+    "enabled_library": {
+      "problem_templates": [
+        "short_term_demand_spike",
+        "pos_signal_divergence",
+        "real_time_shortage_at_current_pos",
+        "event_pattern_shift"
+      ],
+      "root_cause_templates": [
+        "pos_velocity_surge",
+        "cultural_event_window",
+        "upstream_supply_lag_vs_velocity"
+      ],
+      "resolution_families": [
+        "reforecast_short_horizon",
+        "trigger_replen_pull",
+        "shift_production_mix",
+        "intra_day_emergency_transfer"
+      ],
+      "action_templates": [
+        "create_task",
+        "create_recommendation_record",
+        "export_action_csv"
+      ]
+    },
+    "prioritization_weights": {
+      "revenue_at_risk": 0.20,
+      "stockout_severity": 0.30,
+      "customer_facing_flag": 0.20,
+      "abc_class": 0.10,
+      "velocity_surge_score": 0.20
+    },
+    "execute_mode": {
+      "dispatch": false,
+      "delivery_mode": "recommendation_record",
+      "csv_path": "/tmp/und_route_sensing_actions"
+    },
+    "action_permissions_per_intent": {
+      "show": [],
+      "analyse": [],
+      "diagnose": [],
+      "solve": ["create_recommendation_record", "create_task", "export_action_csv"],
+      "simulate": []
+    },
+    "ui_prompts": {
+      "show": [
+        {"id": "show_route_load_today", "label": "Today's truck load", "text": "What should each truck carry on Route RTE-RIYADH-12 today, by SKU and quantity?"},
+        {"id": "show_route_returns", "label": "Routes with high returns", "text": "Which routes are running above the 10% returns threshold this week?"},
+        {"id": "show_sellthrough_gap", "label": "Sell-through gap", "text": "Where is actual sell-through diverging from forecast by more than 15% on a per-route basis?"},
+        {"id": "show_route_mix_mismatch", "label": "Mix mismatch by route", "text": "Which SKU × route pairs are mis-loaded vs actual demand pattern this week?"}
+      ],
+      "analyse": [
+        {"id": "analyse_repeat_offenders", "label": "Repeat-offender routes", "text": "Which routes have repeatedly returned the same SKUs for the last 4 weeks — what's the pattern?"},
+        {"id": "analyse_judgement_drift", "label": "Salesman judgement drift", "text": "Where has driver judgement on truck loading drifted away from actual route demand?"},
+        {"id": "analyse_pre_holiday", "label": "Pre-holiday shift", "text": "How is route-level demand shifting in the 3 days before the next public holiday across Riyadh routes?"},
+        {"id": "analyse_top_missed", "label": "Top missed opportunities", "text": "Which SKUs are showing strong POS signal at routes where they were under-loaded today?"}
+      ],
+      "diagnose": [
+        {"id": "diag_route_returns", "label": "Why returns at RTE-12", "text": "Why is RTE-RIYADH-12 returning 12% of LABAN-500ML this week — what's the root cause?"},
+        {"id": "diag_sellthrough_drop", "label": "Sell-through drop", "text": "Diagnose the sell-through drop on YOGURT-PLAIN-500G across the Eastern routes."},
+        {"id": "diag_truck_mix", "label": "Truck mix bias", "text": "Why does the current truck-load template skew toward MILK-FULL-1L on routes where LABAN is the bigger seller?"}
+      ],
+      "solve": [
+        {"id": "solve_truck_load_rec", "label": "Recommend truck load", "text": "Recommend the optimal SKU + quantity load for every truck on the Riyadh North routes for tomorrow."},
+        {"id": "solve_returns_plan", "label": "Cut returns by 5pp", "text": "Give me a 7-day plan to cut returns from 10% to under 5% on the worst 5 routes."},
+        {"id": "solve_route_priority", "label": "SKU priority by route", "text": "For each Riyadh route, list the top 5 SKUs to prioritise on the truck and the why."},
+        {"id": "solve_sellthrough_lift", "label": "Sell-through lift", "text": "What's the SKU × route action set that lifts sell-through the most over the next 2 weeks?"}
+      ],
+      "simulate": [
+        {"id": "sim_swap_skus", "label": "Swap mix on RTE-12", "text": "If I swap 30% of MILK-FULL-1L for LABAN-500ML on RTE-RIYADH-12, what's the projected returns + sell-through change?"},
+        {"id": "sim_drop_dead_skus", "label": "Drop dead SKUs", "text": "If I stop loading the 3 lowest-velocity SKUs on every truck, how much capacity is freed and what's the lost-sale risk?"},
+        {"id": "sim_rebalance_routes", "label": "Rebalance Riyadh", "text": "If I rebalance load between Riyadh North and Riyadh South based on POS velocity, where do total returns land?"},
+        {"id": "sim_new_route_added", "label": "Add a new route", "text": "If I add an extra mid-day RTE-RIYADH-12B for high-velocity stores, what's the lift in same-day sell-through?"}
+      ]
+    }
+  }
+}

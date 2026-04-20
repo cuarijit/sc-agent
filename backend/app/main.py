@@ -88,7 +88,9 @@ from .routers.auth_routes import router as auth_router
 from .routers.admin_user_routes import router as admin_user_router
 from .routers.branding_routes import router as branding_router
 from .routers.branding_admin_routes import router as branding_admin_router
+from .routers.help_admin_routes import router as help_admin_router
 from .routers.module_config_routes import router as module_config_router
+from .routers.dbf_routes import router as dbf_router
 from .services.auth_store import AuthStore
 from .services.auth_middleware import AuthMiddleware
 from .services.module_config_service import ModuleConfigService
@@ -116,6 +118,21 @@ async def lifespan(app: FastAPI):
         store = AuthStore(db)
         # Modules: seed default 4 modules + their pages so /agentic-ai/admin/modules has data
         ModuleConfigService(db).seed_default_modules()
+        # Puls8 DBF demo seed (8 SKUs × 5 customers × 52 weeks). Idempotent;
+        # bails out fast if DbfScenario rows already exist. Guarded by env var.
+        if (os.getenv("SCP_BOOTSTRAP_DBF_DEMO", "true") or "true").strip().lower() != "false":
+            try:
+                from .services.dbf import seed_dbf_demo
+                summary = seed_dbf_demo(db)
+                print(f"[lifespan] dbf demo seed: {summary.get('status')}", flush=True)
+            except Exception as exc:  # pragma: no cover — never block app-up
+                import sys, traceback
+                print(f"[lifespan] dbf demo seed FAILED: {exc}", flush=True)
+                traceback.print_exc(file=sys.stdout)
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
         if (os.getenv("SCP_BOOTSTRAP_DEMO_USERS", "true") or "true").strip().lower() != "false":
             store.bootstrap_admin_if_missing(
                 username=os.getenv("SCP_BOOTSTRAP_ADMIN_USERNAME", "admin"),
@@ -205,11 +222,13 @@ app.include_router(auth_router)
 app.include_router(admin_user_router)
 app.include_router(branding_router)
 app.include_router(branding_admin_router)
+app.include_router(help_admin_router)
 app.include_router(module_config_router)
 app.include_router(agent_config_router)
 app.include_router(inventory_diagnostic_router)
 app.include_router(inventory_allocation_router)
 app.include_router(demand_sensing_router)
+app.include_router(dbf_router)
 
 # Static files for branding library + uploads — public (LoginPage shows logos pre-auth)
 from fastapi.staticfiles import StaticFiles  # noqa: E402

@@ -137,6 +137,16 @@ function TabPanel({ value, index, children }: { value: number; index: number; ch
 
 // ── Status color mapping ────────────────────────────────────────────────
 
+// Agent type-keys that ship a structured Agentic Library
+// (problem_templates / root_cause_templates / resolution_families /
+// action_templates) under behavior.library. The Agentic Library editor +
+// the agentic-extras passthrough on save are gated by this set.
+const AGENTIC_LIBRARY_TYPES: Set<string> = new Set([
+  "inventory_diagnostic_agent",
+  "demand_sensing_agent",
+  "inventory_allocation_agent",
+]);
+
 const STATUS_COLOR: Record<string, "success" | "warning" | "default"> = {
   active: "success",
   draft: "warning",
@@ -428,9 +438,10 @@ export default function AgentTemplateEditor({
       flow: flowConfig,
     };
 
-    // Preserve agentic-library keys for inventory_diagnostic_agent so edits
-    // made in the Agentic Library tab round-trip.
-    if (template.type_key === "inventory_diagnostic_agent") {
+    // Preserve agentic-library keys for any agent type that ships a
+    // structured behavior.library (inv-diag / demand-sensing / allocation)
+    // so edits made in the Agentic Library tab round-trip.
+    if (AGENTIC_LIBRARY_TYPES.has(template.type_key)) {
       for (const [k, v] of Object.entries(agenticExtras)) {
         if (v !== undefined) behavior[k] = v;
       }
@@ -525,7 +536,7 @@ export default function AgentTemplateEditor({
             <Tab label="Data Mapping" sx={{ minHeight: 40, fontSize: 13 }} />
             <Tab label="UI & Presentation" sx={{ minHeight: 40, fontSize: 13 }} />
             <Tab label="Flow" sx={{ minHeight: 40, fontSize: 13 }} />
-            {template.type_key === "inventory_diagnostic_agent" ? (
+            {AGENTIC_LIBRARY_TYPES.has(template.type_key) ? (
               <Tab label="Agentic Library" sx={{ minHeight: 40, fontSize: 13, color: "success.main" }} />
             ) : null}
           </Tabs>
@@ -1233,8 +1244,8 @@ export default function AgentTemplateEditor({
             </Stack>
           </TabPanel>
 
-          {/* ════════════════ Tab 7: Agentic Library (inventory_diagnostic_agent only) ════════════════ */}
-          {template.type_key === "inventory_diagnostic_agent" ? (
+          {/* ════════════════ Tab 7: Agentic Library (all structured agents) ════════════════ */}
+          {AGENTIC_LIBRARY_TYPES.has(template.type_key) ? (
             <TabPanel value={activeTab} index={7}>
               <AgenticLibraryTab
                 extras={agenticExtras}

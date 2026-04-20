@@ -7,6 +7,8 @@ export default function InventoryDiagnosticConsoleRoute() {
       title="Inventory Diagnostic Console"
       subtitle="LLM-powered diagnose / solve / dispatch over the network"
       breadcrumbs={[{ label: "Agentic AI" }, { label: "Inventory Diagnostic" }]}
+      bodyClassName="pg-body--chat-console"
+      scrollClassName="pg-scroll--chat-console"
     >
       <InventoryDiagnosticConsolePage />
     </PageShell>

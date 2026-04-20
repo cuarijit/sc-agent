@@ -320,6 +320,27 @@ class InventoryAllocationRunner:
             llm_call_log=llm_call_log,
         )
 
+        # Record the compose / explanation step so the Pipeline panel surfaces
+        # the LLM-driven narrative generation (matches inventory_diagnostic).
+        compose_art = recorder.artifact("compose_response")
+        compose_art.inputs = {
+            "intent_mode": intent_mode,
+            "problem_count": len(ranked_payload),
+            "root_cause_count": len(root_causes_payload),
+            "resolution_count": len(resolutions_payload),
+        }
+        compose_art.outputs = {
+            "narrative_chars": len(composed.narrative or ""),
+            "follow_up_count": len(composed.follow_up_questions or []),
+            "warning_count": len(composed.warnings or []),
+        }
+        compose_art.sample_rows = [{"narrative_preview": (composed.narrative or "")[:600]}]
+        compose_art.row_count = 1
+        for c in llm_call_log[compose_log_start:]:
+            if c.call_site == "explanation":
+                compose_art.llm_call = c.__dict__
+                break
+
         # ---------- 8) Audit.
         run_id = composed.structured.get("run_id") or str(uuid.uuid4())
         record = AuditRecord(
@@ -341,16 +362,8 @@ class InventoryAllocationRunner:
             duration_ms=int((time.perf_counter() - start) * 1000),
         )
         self.audit.write(record)
-        # Record compose step + flush all artifacts keyed to this run_id.
-        cp_art = recorder.artifact("compose_response")
-        cp_art.outputs = {
-            "narrative_chars": len(composed.narrative or ""),
-            "follow_ups": len(composed.follow_up_questions or []),
-        }
-        cp_art.llm_call = (
-            llm_call_log[compose_log_start].__dict__
-            if len(llm_call_log) > compose_log_start else {}
-        )
+        # Flush all artifacts (including the compose_response artifact recorded
+        # immediately after composer.compose) keyed to this run_id.
         recorder.flush(self.db, run_id)
 
         # Detect the LLM-active state (any successful non-intent-parse call).

@@ -3,6 +3,8 @@ import { request } from "./api";
 export interface BrandingSettings {
   company_logo: string | null;
   customer_logo: string | null;
+  /** Tenant / customer-account logo shown on the RIGHT of the brand strip. */
+  tenant_logo: string | null;
 }
 
 export interface LibraryAsset {

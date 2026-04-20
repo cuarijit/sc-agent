@@ -659,3 +659,182 @@ export function dispatchActionPlan(planId: string): Promise<{
     method: "POST",
   });
 }
+
+// ── Puls8 DBF (Driver-Based Forecast) ──────────────────────────────────
+
+export interface DbfScenarioRecord {
+  scenario_id: string;
+  name: string;
+  description: string;
+  status: string;
+  created_by: string;
+  parent_scenario_id: string | null;
+  created_at: string;
+  updated_at: string;
+  is_production: boolean;
+}
+
+export interface DbfReferenceData {
+  skus: string[];
+  customers: string[];
+  locations: string[];
+}
+
+export interface DbfDriverRow {
+  scenario_id: string;
+  sku: string;
+  customer_id: string;
+  week_start: string;
+  [key: string]: unknown;
+}
+
+export interface DbfDriversResponse {
+  price: DbfDriverRow[];
+  distribution: DbfDriverRow[];
+  display: DbfDriverRow[];
+  feature: DbfDriverRow[];
+}
+
+export interface DbfConsumptionRow {
+  scenario_id: string;
+  sku: string;
+  customer_id: string;
+  week_start: string;
+  base_qty: number;
+  price_effect: number;
+  acv_effect: number;
+  display_effect: number;
+  feature_effect: number;
+  total_qty: number;
+  adjustment_qty: number;
+  adjusted_qty: number;
+  last_year_qty: number;
+  last_known_value_qty: number;
+  actual_qty: number;
+}
+
+export interface DbfShipmentRow {
+  scenario_id: string;
+  sku: string;
+  customer_id: string;
+  location: string;
+  week_start: string;
+  consumption_qty: number;
+  inventory_position: number;
+  shipment_qty: number;
+  regression_residual: number;
+}
+
+export interface DbfAccuracyResponse {
+  overall: { mape: number; bias: number; wmape: number; weeks: number };
+  trend: Array<{ week_start: string; mape: number; bias: number; wmape: number }>;
+  detail: Array<{ entity: string; mape: number; bias: number; wmape: number; weeks: number }>;
+}
+
+export interface DbfAdjustment {
+  sku: string;
+  customer: string;
+  week: string;
+  driver: "price" | "acv" | "display" | "feature";
+  value: number;
+}
+
+export interface DbfConsumptionAdjustment {
+  sku: string;
+  customer: string;
+  week: string;
+  delta: number;
+}
+
+export function fetchDbfScenarios(): Promise<{ scenarios: DbfScenarioRecord[] }> {
+  return request("/api/dbf/scenarios");
+}
+
+export function fetchDbfReference(): Promise<DbfReferenceData> {
+  return request("/api/dbf/reference");
+}
+
+export function fetchDbfDrivers(params: {
+  scenario_id?: string;
+  sku?: string;
+  customer?: string;
+  week_from?: string;
+  week_to?: string;
+}): Promise<DbfDriversResponse> {
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) usp.set(k, String(v));
+  return request(`/api/dbf/drivers?${usp.toString()}`);
+}
+
+export function fetchDbfConsumption(params: {
+  scenario_id?: string;
+  sku?: string;
+  customer?: string;
+}): Promise<{ rows: DbfConsumptionRow[]; total: number }> {
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) usp.set(k, String(v));
+  return request(`/api/dbf/consumption?${usp.toString()}`);
+}
+
+export function fetchDbfShipment(params: {
+  scenario_id?: string;
+  sku?: string;
+  customer?: string;
+  location?: string;
+}): Promise<{ rows: DbfShipmentRow[]; total: number }> {
+  const usp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) usp.set(k, String(v));
+  return request(`/api/dbf/shipment?${usp.toString()}`);
+}
+
+export function fetchDbfAccuracy(
+  tier: "driver" | "consumption" | "shipment",
+  scenario_id: string,
+): Promise<DbfAccuracyResponse> {
+  return request(`/api/dbf/accuracy/${tier}?scenario_id=${encodeURIComponent(scenario_id)}`);
+}
+
+export function createDbfScenario(payload: {
+  name: string;
+  description?: string;
+  parent_scenario_id?: string;
+}): Promise<DbfScenarioRecord> {
+  return request("/api/dbf/scenarios", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteDbfScenario(scenario_id: string): Promise<{ deleted: string }> {
+  return request(`/api/dbf/scenarios/${encodeURIComponent(scenario_id)}`, {
+    method: "DELETE",
+  });
+}
+
+export function patchDbfDrivers(
+  scenario_id: string,
+  adjustments: DbfAdjustment[],
+): Promise<{ adjustments_applied: number; consumption_rows_updated: number; shipment_rows_updated: number }> {
+  return request(`/api/dbf/scenarios/${encodeURIComponent(scenario_id)}/drivers`, {
+    method: "PATCH",
+    body: JSON.stringify({ adjustments }),
+  });
+}
+
+export function patchDbfConsumption(
+  scenario_id: string,
+  adjustments: DbfConsumptionAdjustment[],
+): Promise<{ adjustments_applied: number }> {
+  return request(`/api/dbf/scenarios/${encodeURIComponent(scenario_id)}/consumption-adjust`, {
+    method: "PATCH",
+    body: JSON.stringify({ adjustments }),
+  });
+}
+
+export function publishDbfScenario(
+  scenario_id: string,
+): Promise<{ published_rows: number; scenario_id: string }> {
+  return request(`/api/dbf/scenarios/${encodeURIComponent(scenario_id)}/publish`, {
+    method: "POST",
+  });
+}

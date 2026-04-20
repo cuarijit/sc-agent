@@ -55,6 +55,9 @@ const SLUG_TO_ROUTE: Record<string, string> = {
   "trade-promotion": ROUTE_PATHS.demandTradePromotion,
   "ibp-analytics": ROUTE_PATHS.demandAnalytics,
   "customer-hierarchy": ROUTE_PATHS.demandCustomers,
+  // Puls8 DBF
+  "dbf-workbench": ROUTE_PATHS.dbfWorkbench,
+  "dbf-analytics": ROUTE_PATHS.dbfAnalytics,
   // Puls8 Agents (agentic-ai module)
   "agent-configuration": ROUTE_PATHS.agentConfiguration,
   "inventory-diagnostic": ROUTE_PATHS.inventoryDiagnosticConsole,
@@ -65,6 +68,11 @@ const SLUG_TO_ROUTE: Record<string, string> = {
   "admin-users": ROUTE_PATHS.adminUsers,
   "admin-modules": ROUTE_PATHS.adminModules,
   "admin-branding": ROUTE_PATHS.adminBranding,
+  "admin-documentation": ROUTE_PATHS.adminDocumentation,
+  // Customer module
+  "customer-highlights": ROUTE_PATHS.customerHighlights,
+  "customer-key-takeaways": ROUTE_PATHS.customerKeyTakeaways,
+  "customer-challenges": ROUTE_PATHS.customerChallenges,
 };
 
 const SLUG_TO_ENTITLEMENT: Record<string, string> = {

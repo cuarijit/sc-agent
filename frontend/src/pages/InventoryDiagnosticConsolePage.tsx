@@ -6,6 +6,7 @@ import {
   Avatar,
   Box,
   Button,
+  ButtonBase,
   Chip,
   CircularProgress,
   Divider,
@@ -51,6 +52,7 @@ import {
   WarningAmberOutlined as WarningIcon,
 } from "@mui/icons-material";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import ReactMarkdown from "react-markdown";
 
 import {
   checkLlmHealth,
@@ -231,6 +233,10 @@ export default function InventoryDiagnosticConsolePage({
   const [conversationId, setConversationId] = useState<string>("");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [view, setView] = useState<ViewKey>("results");
+  // When a summary line in the left chat bubble is clicked, we jump to the
+  // Pipeline tab and auto-expand the matching step. The id is cleared on
+  // next render via PipelineView's internal effect so repeat clicks work.
+  const [pipelineFocusStepId, setPipelineFocusStepId] = useState<string | null>(null);
   // Right insights panel: collapsed by default (chat fills the page). User can
   // expand via the splitter button. When expanded, the splitter between the
   // two panes is draggable to rebalance widths.
@@ -579,6 +585,9 @@ export default function InventoryDiagnosticConsolePage({
               borderBottom: 1,
               borderColor: "divider",
               bgcolor: alpha(theme.palette.primary.main, 0.03),
+              maxHeight: "40%",
+              overflowY: "auto",
+              flexShrink: 0,
             }}
           >
             <Stack spacing={1.5}>
@@ -689,6 +698,13 @@ export default function InventoryDiagnosticConsolePage({
                 onViewResults={(runId) => {
                   setSelectedRunId(runId);
                   setView("results");
+                  setRightExpanded(true);
+                }}
+                onFocusStep={(runId, stepId) => {
+                  setSelectedRunId(runId);
+                  setView("pipeline");
+                  setPipelineFocusStepId(stepId);
+                  setRightExpanded(true);
                 }}
               />
             ))
@@ -880,7 +896,11 @@ export default function InventoryDiagnosticConsolePage({
           ) : view === "results" ? (
             <ResultsView response={selectedResponse} />
           ) : view === "pipeline" ? (
-            <PipelineView response={selectedResponse} />
+            <PipelineView
+              response={selectedResponse}
+              focusStepId={pipelineFocusStepId}
+              onConsumeFocus={() => setPipelineFocusStepId(null)}
+            />
           ) : (
             <AuditView response={selectedResponse} />
           )}
@@ -1158,19 +1178,309 @@ function TypingIndicator() {
   );
 }
 
+type SummaryLineTone = "error" | "warning" | "primary" | "success" | "default";
+
+type CategorySummary = {
+  key: string;
+  tone: SummaryLineTone;
+  icon: React.ReactNode;
+  label: string;
+  meta: string;
+  detail: string;
+  focusStepId: string;
+};
+
+function buildCategorySummaries(response: InventoryDiagnosticResponse): CategorySummary[] {
+  const structured = response.structured ?? {};
+  const problems = (structured.problems ?? []) as any[];
+  const rcs = (structured.root_causes ?? []) as any[];
+  const resolutions = (structured.resolutions ?? []) as any[];
+  const ap = structured.action_plan as any;
+  const warnings = (response.warnings ?? []) as string[];
+
+  const agentIsDemandSensing = response.agent_type === "demand_sensing_agent";
+  const problemsLabel = agentIsDemandSensing ? "Signals" : "Problems";
+  const problemsStepId = agentIsDemandSensing ? "detect_signals" : "detect_problems";
+
+  const out: CategorySummary[] = [];
+
+  if (problems.length > 0) {
+    const critical = problems.filter((p) => p.severity === "critical").length;
+    const top = problems[0] ?? {};
+    const sku = typeof top.sku === "string" ? top.sku : null;
+    const node = typeof top.node_id === "string" ? top.node_id : typeof top.location === "string" ? top.location : null;
+    const shortage =
+      typeof top.shortage_qty === "number" ? ` · short ${formatNumber(Math.round(top.shortage_qty))}` : "";
+    const detail = [sku, node].filter(Boolean).join(" @ ") || (typeof top.title === "string" ? top.title : "");
+    out.push({
+      key: "problems",
+      tone: critical > 0 ? "error" : "warning",
+      icon: <ErrorIcon sx={{ fontSize: 16 }} />,
+      label: problemsLabel,
+      meta: `${problems.length} total${critical > 0 ? ` · ${critical} critical` : ""}`,
+      detail: detail ? `${detail}${shortage}` : shortage.trim() || "—",
+      focusStepId: problemsStepId,
+    });
+  }
+
+  if (rcs.length > 0) {
+    const top = rcs[0] ?? {};
+    const detail =
+      (typeof top.label === "string" && top.label) ||
+      (typeof top.name === "string" && top.name) ||
+      (typeof top.root_cause_id === "string" && top.root_cause_id) ||
+      "—";
+    out.push({
+      key: "root_causes",
+      tone: "warning",
+      icon: <WarningIcon sx={{ fontSize: 16 }} />,
+      label: "Root causes",
+      meta: `${rcs.length} analyzed`,
+      detail,
+      focusStepId: "analyze_root_cause",
+    });
+  }
+
+  if (resolutions.length > 0) {
+    const clears = resolutions.filter((r) => r.resolves_breach === true).length;
+    const top = resolutions[0] ?? {};
+    const family =
+      (typeof top.family === "string" && top.family) ||
+      (typeof top.resolution_family === "string" && top.resolution_family) ||
+      null;
+    const label =
+      (typeof top.title === "string" && top.title) ||
+      (typeof top.label === "string" && top.label) ||
+      family ||
+      "Top recommendation";
+    out.push({
+      key: "resolutions",
+      tone: "primary",
+      icon: <AutoIcon sx={{ fontSize: 16 }} />,
+      label: "Resolutions",
+      meta: `${clears} of ${resolutions.length} clear breach`,
+      detail: label,
+      focusStepId: "enumerate_resolutions",
+    });
+  }
+
+  if (ap && Array.isArray(ap.plans) && ap.plans.length > 0) {
+    const top = ap.plans[0] ?? {};
+    const detail =
+      (typeof top.title === "string" && top.title) ||
+      (typeof top.action === "string" && top.action) ||
+      (typeof top.family_key === "string" && top.family_key) ||
+      "Action";
+    out.push({
+      key: "action_plan",
+      tone: "success",
+      icon: <CheckIcon sx={{ fontSize: 16 }} />,
+      label: "Action plan",
+      meta: `${ap.plans.length} step${ap.plans.length === 1 ? "" : "s"}`,
+      detail,
+      focusStepId: "map_actions",
+    });
+  }
+
+  if (warnings.length > 0) {
+    out.push({
+      key: "warnings",
+      tone: "default",
+      icon: <BoltIcon sx={{ fontSize: 16 }} />,
+      label: "Warnings",
+      meta: `${warnings.length} note${warnings.length === 1 ? "" : "s"}`,
+      detail: warnings[0] ?? "",
+      focusStepId: "audit",
+    });
+  }
+
+  return out;
+}
+
+function SummaryLineRow({
+  entry,
+  onClick,
+}: {
+  entry: CategorySummary;
+  onClick: () => void;
+}) {
+  const theme = useTheme();
+  const palette =
+    entry.tone === "default"
+      ? { main: theme.palette.grey[600], light: theme.palette.grey[100] }
+      : (theme.palette[entry.tone] as { main: string; light: string });
+  return (
+    <ButtonBase
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 1,
+        width: "100%",
+        textAlign: "left",
+        px: 1,
+        py: 0.75,
+        borderRadius: 1.25,
+        borderLeft: 3,
+        borderLeftColor: palette.main,
+        bgcolor: alpha(palette.main, 0.06),
+        transition: "background-color 0.12s",
+        "&:hover": { bgcolor: alpha(palette.main, 0.14) },
+      }}
+    >
+      <Box sx={{ color: palette.main, display: "flex" }}>{entry.icon}</Box>
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0 }}>
+          <Typography
+            variant="caption"
+            sx={{ fontWeight: 700, color: palette.main, fontSize: 11, letterSpacing: 0.3 }}
+          >
+            {entry.label.toUpperCase()}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: 11 }}>
+            {entry.meta}
+          </Typography>
+        </Stack>
+        <Typography
+          variant="body2"
+          sx={{
+            fontSize: 12.5,
+            lineHeight: 1.35,
+            color: "text.primary",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+          }}
+        >
+          {entry.detail}
+        </Typography>
+      </Box>
+      <ExpandIcon sx={{ fontSize: 16, color: "text.disabled" }} />
+    </ButtonBase>
+  );
+}
+
+// Pre-process the LLM narrative into polished markdown:
+//  - auto-bold SKU codes (BAR-002, COFFEE-088), node codes (CDC-NORTH, DC-01),
+//    week references (week 3, wk+2) and quantities (4,340 units, $1.2M)
+//  - turn plain "- " or "* " prefixed lines into markdown bullets (already
+//    valid markdown, but we also accept "• ")
+//  - tag "Next step" / "To resolve" / "I recommend" / "Recommendation" leads
+//    so we can render them as a colored callout paragraph
+const NARRATIVE_LEAD_PATTERNS: Array<{ re: RegExp; tone: "primary" | "success" | "warning" }> = [
+  { re: /^(next step[s]?:)/i, tone: "success" },
+  { re: /^(recommendation:)/i, tone: "primary" },
+  { re: /^(to resolve[^:]*:)/i, tone: "primary" },
+  { re: /^(i recommend)/i, tone: "primary" },
+  { re: /^(warning:)/i, tone: "warning" },
+  { re: /^(caveat:)/i, tone: "warning" },
+];
+
+function enrichNarrativeMarkdown(text: string): string {
+  if (!text) return "";
+  // Normalize bullets
+  let s = text.replace(/^\s*•\s+/gm, "- ");
+  // Auto-bold SKU / node codes: 2+ uppercase letters followed by "-" and digits
+  // (e.g. BAR-002, CDC-NORTH, COFFEE-088, WATER-001, DC-01)
+  s = s.replace(/\b([A-Z]{2,}-[A-Z0-9]{2,})\b/g, "**$1**");
+  // Auto-bold "week N" / "wk+N" / "wk N"
+  s = s.replace(/\b(week\s+\d+|wk\+?\s?\d+)\b/gi, "**$1**");
+  // Auto-bold numeric quantities with units or currency (e.g., "4,340 units", "$1.2M", "22,940")
+  s = s.replace(/(\$\s?[\d,]+(?:\.\d+)?[KMB]?)/g, "**$1**");
+  s = s.replace(/(\b\d{1,3}(?:,\d{3})+\b)(?!\*)/g, "**$1**");
+  return s;
+}
+
+function AgentNarrative({ text }: { text: string }) {
+  const theme = useTheme();
+  const paragraphs = useMemo(
+    () => text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean),
+    [text],
+  );
+
+  return (
+    <Stack spacing={1.25}>
+      {paragraphs.map((para, idx) => {
+        const firstLine = para.split("\n")[0] ?? "";
+        const tone = NARRATIVE_LEAD_PATTERNS.find((p) => p.re.test(firstLine))?.tone ?? null;
+        const enriched = enrichNarrativeMarkdown(para);
+        const palette = tone
+          ? (theme.palette[tone] as { main: string; light: string; dark: string })
+          : null;
+        return (
+          <Box
+            key={idx}
+            sx={
+              palette
+                ? {
+                    p: 1.25,
+                    pl: 1.5,
+                    borderRadius: 1.25,
+                    borderLeft: 3,
+                    borderLeftColor: palette.main,
+                    bgcolor: alpha(palette.main, 0.06),
+                  }
+                : undefined
+            }
+          >
+            <Box
+              sx={{
+                fontSize: 13.5,
+                lineHeight: 1.65,
+                color: "text.primary",
+                "& p": { m: 0, mb: 0.75, "&:last-child": { mb: 0 } },
+                "& p + p": { mt: 0.75 },
+                "& strong": {
+                  fontWeight: 700,
+                  color: palette ? palette.dark : theme.palette.primary.dark,
+                },
+                "& ul, & ol": { m: 0, pl: 2.5, mb: 0.5 },
+                "& li": { mb: 0.25, lineHeight: 1.6 },
+                "& li::marker": { color: palette ? palette.main : theme.palette.primary.main },
+                "& code": {
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  color: "primary.dark",
+                  px: 0.5,
+                  py: 0.1,
+                  borderRadius: 0.5,
+                  fontSize: 12,
+                  fontFamily: "ui-monospace, Menlo, monospace",
+                },
+                "& a": { color: "primary.main", textDecoration: "underline" },
+              }}
+            >
+              <ReactMarkdown>{enriched}</ReactMarkdown>
+            </Box>
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+}
+
 function MessageBubble({
   message,
   active,
   onSelect,
   onViewResults,
+  onFocusStep,
 }: {
   message: Message;
   active: boolean;
   onSelect: () => void;
   onViewResults: (runId: string) => void;
+  onFocusStep: (runId: string, stepId: string) => void;
 }) {
   const theme = useTheme();
   const isUser = message.role === "user";
+  const response = message.response;
+  const summaries = !isUser && response ? buildCategorySummaries(response) : [];
+  const narrative = !isUser && response ? (response.narrative || "").trim() : "";
   return (
     <Stack
       direction="row"
@@ -1185,7 +1495,7 @@ function MessageBubble({
         {isUser ? <PersonIcon sx={{ fontSize: 16 }} /> : <BotIcon sx={{ fontSize: 16 }} />}
       </Avatar>
       <Paper
-        onClick={!isUser && message.response ? onSelect : undefined}
+        onClick={!isUser && response ? onSelect : undefined}
         elevation={active ? 2 : 0}
         sx={{
           px: 1.75,
@@ -1193,14 +1503,14 @@ function MessageBubble({
           borderRadius: 2,
           bgcolor: isUser ? "primary.main" : "background.paper",
           color: isUser ? "primary.contrastText" : "text.primary",
-          cursor: !isUser && message.response ? "pointer" : "default",
+          cursor: !isUser && response ? "pointer" : "default",
           border: 1,
           borderColor: active ? "primary.main" : "divider",
           transition: "all 0.15s",
-          "&:hover": !isUser && message.response
+          "&:hover": !isUser && response
             ? { borderColor: alpha(theme.palette.primary.main, 0.5), boxShadow: 1 }
             : {},
-          maxWidth: 480,
+          maxWidth: 640,
         }}
       >
         {message.pending ? (
@@ -1216,20 +1526,56 @@ function MessageBubble({
           </Alert>
         ) : (
           <>
-            <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", fontSize: 13.5, lineHeight: 1.55 }}>
-              {message.content}
-            </Typography>
-            {!isUser && message.response ? (
+            {isUser ? (
+              <Typography
+                variant="body2"
+                sx={{ whiteSpace: "pre-wrap", fontSize: 13.5, lineHeight: 1.55 }}
+              >
+                {message.content}
+              </Typography>
+            ) : narrative ? (
+              <AgentNarrative text={narrative} />
+            ) : (
+              <Typography
+                variant="body2"
+                sx={{ whiteSpace: "pre-wrap", fontSize: 13.5, lineHeight: 1.55 }}
+              >
+                {message.content}
+              </Typography>
+            )}
+            {!isUser && response && summaries.length > 0 ? (
+              <>
+                <Divider sx={{ my: 1.25 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontSize: 10, letterSpacing: 0.6, fontWeight: 700 }}
+                  >
+                    OUTCOME
+                  </Typography>
+                </Divider>
+                <Stack spacing={0.5}>
+                  {summaries.map((s) => (
+                    <SummaryLineRow
+                      key={s.key}
+                      entry={s}
+                      onClick={() => onFocusStep(response.run_id, s.focusStepId)}
+                    />
+                  ))}
+                </Stack>
+              </>
+            ) : null}
+            {!isUser && response ? (
               <SolveActionSummaryCard
-                response={message.response}
-                onViewResults={() => onViewResults(message.response!.run_id)}
+                response={response}
+                onViewResults={() => onViewResults(response.run_id)}
               />
             ) : null}
-            {!isUser && message.response ? (
+            {!isUser && response ? (
               <Stack direction="row" spacing={0.5} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
                 <Chip
                   size="small"
-                  label={message.response.intent_mode}
+                  label={response.intent_mode}
                   color="primary"
                   variant="outlined"
                   sx={{ height: 20, fontSize: 10 }}
@@ -1237,31 +1583,33 @@ function MessageBubble({
                 <Chip
                   size="small"
                   icon={
-                    message.response.llm_active ? (
+                    response.llm_active ? (
                       <FlashIcon sx={{ fontSize: 12 }} />
                     ) : (
                       <OfflineBoltIcon sx={{ fontSize: 12 }} />
                     )
                   }
-                  label={message.response.llm_active ? "LLM" : "deterministic"}
-                  color={message.response.llm_active ? "success" : "default"}
+                  label={response.llm_active ? "LLM" : "deterministic"}
+                  color={response.llm_active ? "success" : "default"}
                   variant="outlined"
                   sx={{ height: 20, fontSize: 10 }}
                 />
-                <Chip
+                <Box sx={{ flex: 1 }} />
+                <Button
                   size="small"
-                  label={`${message.response.structured.problems?.length ?? 0} prob`}
-                  sx={{ height: 20, fontSize: 10 }}
-                />
-                <Chip
-                  size="small"
-                  label={`${message.response.structured.resolutions?.length ?? 0} fix`}
-                  sx={{ height: 20, fontSize: 10 }}
-                />
+                  endIcon={<ExpandIcon sx={{ fontSize: 16 }} />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewResults(response.run_id);
+                  }}
+                  sx={{ fontSize: 11, py: 0.25, minWidth: 0 }}
+                >
+                  View results
+                </Button>
                 <Typography
                   variant="caption"
                   color="text.secondary"
-                  sx={{ ml: "auto", fontSize: 10, alignSelf: "center" }}
+                  sx={{ fontSize: 10, alignSelf: "center" }}
                 >
                   {timeLabel(message.at)}
                 </Typography>
@@ -1442,8 +1790,8 @@ function ResultsView({ response }: { response: InventoryDiagnosticResponse }) {
 // get a teaser of what's inside before expanding.
 function AgentSummaryCard({ response }: { response: InventoryDiagnosticResponse }) {
   const theme = useTheme();
-  const [expanded, setExpanded] = useState(false);
   const narrative = response.narrative || "";
+  const [expanded, setExpanded] = useState(() => narrative.trim().length > 0);
   const firstLine = narrative.split("\n").find((l) => l.trim().length > 0) ?? "";
   const preview = firstLine.length > 120 ? firstLine.slice(0, 117) + "…" : firstLine;
   return (
@@ -1535,12 +1883,9 @@ function AgentSummaryCard({ response }: { response: InventoryDiagnosticResponse 
             </Typography>
           ) : null}
           {expanded ? (
-            <Typography
-              variant="body2"
-              sx={{ whiteSpace: "pre-wrap", lineHeight: 1.65, mt: 1 }}
-            >
-              {narrative}
-            </Typography>
+            <Box sx={{ mt: 1 }}>
+              <AgentNarrative text={narrative} />
+            </Box>
           ) : null}
         </Box>
       </Stack>
@@ -2271,8 +2616,11 @@ const STEP_LABELS: Record<string, string> = {
   followup_interpret: "Follow-up interpreter",
   intent_parse: "Intent parser",
   scope_resolve: "Scope resolver",
+  scope: "Scope resolver",
   capability_check: "Capability check",
+  capability: "Capability check",
   detect_problems: "Problem detection",
+  detect_signals: "Signal detection",
   prioritize: "Prioritization",
   analyze_root_cause: "Root-cause analyzer",
   enumerate_resolutions: "Resolution generator",
@@ -2283,7 +2631,15 @@ const STEP_LABELS: Record<string, string> = {
 };
 
 
-function PipelineView({ response }: { response: InventoryDiagnosticResponse }) {
+function PipelineView({
+  response,
+  focusStepId,
+  onConsumeFocus,
+}: {
+  response: InventoryDiagnosticResponse;
+  focusStepId?: string | null;
+  onConsumeFocus?: () => void;
+}) {
   const stepsQuery = useQuery({
     queryKey: ["inventory-diagnostic-run-steps", response.run_id, response.agent_type],
     queryFn: () => fetchRunSteps(response.run_id, response.agent_type),
@@ -2298,18 +2654,54 @@ function PipelineView({ response }: { response: InventoryDiagnosticResponse }) {
   if (steps.length === 0) {
     return <EmptyCard text="No step artifacts recorded for this run." />;
   }
+  // Map the logical focus id to the actual step_id emitted by this agent.
+  // Inventory Diagnostic uses "detect_problems"; Demand Sensing uses
+  // "detect_signals". Both `scope_resolve`/`scope` and `capability_check`/
+  // `capability` are aliased. We match either the exact id or one of the
+  // known aliases so deep-links work across agents.
+  const focusAliases: Record<string, string[]> = {
+    detect_problems: ["detect_problems", "detect_signals"],
+    detect_signals: ["detect_signals", "detect_problems"],
+    scope_resolve: ["scope_resolve", "scope"],
+    scope: ["scope", "scope_resolve"],
+    capability_check: ["capability_check", "capability"],
+    capability: ["capability", "capability_check"],
+  };
+  const resolvedFocusAliases = focusStepId ? focusAliases[focusStepId] ?? [focusStepId] : [];
   return (
     <Stack spacing={1}>
       {steps.map((step) => (
-        <PipelineStepCard key={step.id} step={step} />
+        <PipelineStepCard
+          key={step.id}
+          step={step}
+          autoExpand={resolvedFocusAliases.includes(step.step_id)}
+          onAutoExpandConsumed={onConsumeFocus}
+        />
       ))}
     </Stack>
   );
 }
 
-function PipelineStepCard({ step }: { step: RunStepArtifact }) {
+function PipelineStepCard({
+  step,
+  autoExpand = false,
+  onAutoExpandConsumed,
+}: {
+  step: RunStepArtifact;
+  autoExpand?: boolean;
+  onAutoExpandConsumed?: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [showJson, setShowJson] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (autoExpand) {
+      setExpanded(true);
+      cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      onAutoExpandConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoExpand]);
   const label = STEP_LABELS[step.step_id] ?? step.step_id;
   const ran = step.status === "ok";
   const err = step.status === "error";
@@ -2317,6 +2709,7 @@ function PipelineStepCard({ step }: { step: RunStepArtifact }) {
   const hasLlm = Boolean((llmCall as any).provider && !(llmCall as any).error);
   return (
     <Paper
+      ref={cardRef}
       variant="outlined"
       sx={{
         borderRadius: 2,

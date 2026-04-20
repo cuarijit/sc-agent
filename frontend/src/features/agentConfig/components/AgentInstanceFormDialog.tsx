@@ -137,6 +137,17 @@ interface AgentInstanceFormDialogProps {
 
 // ── Constants ───────────────────────────────────────────────────────────
 
+// Agent type-keys whose template ships a structured behavior.library
+// (problem_templates / root_cause_templates / resolution_families /
+// action_templates) — these get the "Agent decision flow" editor on the
+// instance Config tab so admins can pick which library entries this
+// instance enables.
+const AGENTIC_LIBRARY_TYPES: Set<string> = new Set([
+  "inventory_diagnostic_agent",
+  "demand_sensing_agent",
+  "inventory_allocation_agent",
+]);
+
 const BUTTON_STYLE_OPTIONS: { value: AgentButtonStyle; label: string }[] = [
   { value: "icon_only", label: "Icon only" },
   { value: "text_only", label: "Text only" },
@@ -1080,7 +1091,7 @@ export default function AgentInstanceFormDialog({
 
           {/* ════════════════ Tab 2: Config ════════════════ */}
           <TabPanel value={activeTab} index={2}>
-            {agentType === "inventory_diagnostic_agent" && currentTemplate?.behavior ? (
+            {AGENTIC_LIBRARY_TYPES.has(agentType) && currentTemplate?.behavior ? (
               <Box sx={{ mb: 3 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
                   Agent decision flow

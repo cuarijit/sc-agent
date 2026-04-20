@@ -679,6 +679,19 @@ html[data-theme="dark"] .pg-header {
   min-height: 0;
 }
 
+/* Chat-console variant: pin the whole console to the viewport height so the
+ * inner split panel (left chat / right insights) owns its own scrollbars and
+ * the composer stays anchored. Opts out of PageShell's default vertical
+ * scroll chrome. */
+.pg-scroll--chat-console { overflow: hidden !important; }
+.pg-scroll--chat-console .pg-container { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.pg-body--chat-console {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
 .pg-actions {
   border: 1px solid rgba(38, 121, 168, 0.10);
   border-radius: 4px;

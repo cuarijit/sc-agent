@@ -570,28 +570,41 @@ export function CapabilityCheckView({ step }: { step: RunStepArtifact }) {
 }
 
 // 5. Problem detection — mini table.
-export function ProblemDetectionView({ step }: { step: RunStepArtifact }) {
+export function ProblemDetectionView({
+  step,
+  labelNoun = "problem",
+}: {
+  step: RunStepArtifact;
+  labelNoun?: "problem" | "signal";
+}) {
   const out = step.outputs ?? {};
   const rows = (step.sample_rows ?? []) as Array<Record<string, unknown>>;
   const inputs = step.inputs ?? {};
   const activeKeys = (inputs.active_problem_keys as string[]) ?? [];
+  const nounTitle = labelNoun === "signal" ? "Signal" : "Problem";
+  const nounPluralTitle = `${nounTitle}s`;
+  const nounLower = labelNoun === "signal" ? "signal" : "problem";
+  const countKey = (labelNoun === "signal" && (out.signal_count as number) != null)
+    ? "signal_count"
+    : "problem_count";
+  const detectedCount = (out[countKey] as number) ?? (out.problem_count as number) ?? 0;
   return (
     <Stack spacing={1.25}>
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        <StatCard value={(out.problem_count as number) ?? 0} label="Problems detected" color="error.main" />
-        <StatCard value={activeKeys.length} label="Active problem templates" color="primary.main" />
+        <StatCard value={detectedCount} label={`${nounPluralTitle} detected`} color="error.main" />
+        <StatCard value={activeKeys.length} label={`Active ${nounLower} templates`} color="primary.main" />
       </Stack>
       {activeKeys.length > 0 ? <ChipGroup label="Active templates" items={activeKeys} color="primary" /> : null}
       {rows.length > 0 ? (
         <Box>
-          <SectionLabel>Top detected problems</SectionLabel>
+          <SectionLabel>{`Top detected ${nounPluralTitle.toLowerCase()}`}</SectionLabel>
           <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1 }}>
             <Table size="small">
               <TableHead>
                 <TableRow>
                   <TableCell sx={thCellSx}>SKU</TableCell>
                   <TableCell sx={thCellSx}>Node</TableCell>
-                  <TableCell sx={thCellSx}>Problem</TableCell>
+                  <TableCell sx={thCellSx}>{nounTitle}</TableCell>
                   <TableCell sx={thCellSx}>Severity</TableCell>
                   <TableCell sx={thCellSx} align="right">Breach wk</TableCell>
                   <TableCell sx={thCellSx} align="right">On hand</TableCell>
@@ -1266,11 +1279,15 @@ export function StepDetailBody({ step }: { step: RunStepArtifact }) {
     case "intent_parse":
       return <IntentParseView step={step} />;
     case "scope_resolve":
+    case "scope":
       return <ScopeResolverView step={step} />;
     case "capability_check":
+    case "capability":
       return <CapabilityCheckView step={step} />;
     case "detect_problems":
-      return <ProblemDetectionView step={step} />;
+      return <ProblemDetectionView step={step} labelNoun="problem" />;
+    case "detect_signals":
+      return <ProblemDetectionView step={step} labelNoun="signal" />;
     case "prioritize":
       return <PrioritizationView step={step} />;
     case "analyze_root_cause":

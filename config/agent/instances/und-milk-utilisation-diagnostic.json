@@ -1,0 +1,105 @@
+{
+  "instance_id": "und-milk-utilisation-diagnostic",
+  "agent_type": "inventory_diagnostic_agent",
+  "display_name": "UND — Milk Utilisation & Allocation Diagnostic",
+  "description": "Tuned for United National Dairy (KSA). Diagnoses daily milk-pool utilisation, product-mix decisions, excess vs spoilage risk, and recommends value-optimal allocation across finished-goods (milk, laban, yogurt, cheese, juice). Built around UND's stated need to decide earlier what to do with the milk — not after.",
+  "icon": "AcUnitOutlined",
+  "button_text": "UND Milk Utilisation",
+  "button_style": "icon_and_text",
+  "tooltip_text": "UND-tuned milk-pool diagnostic — daily intake → optimal product mix → action.",
+  "module_slug": "agentic-ai",
+  "is_active": false,
+  "type_specific_config": {
+    "planning_horizon_weeks": 2,
+    "enabled_intents": ["show", "diagnose", "solve", "simulate", "execute"],
+    "enabled_library": {
+      "problem_templates": [
+        "expiring_batch_risk",
+        "shelf_life_shortfall",
+        "excess_inventory_risk"
+      ],
+      "root_cause_templates": [
+        "late_supply",
+        "network_imbalance",
+        "forecast_overstated",
+        "rsl_below_threshold",
+        "cold_chain_break",
+        "aged_receipt"
+      ],
+      "resolution_families": [
+        "transfer_excess",
+        "expedite_inbound",
+        "reroute_intransit",
+        "accelerated_markdown",
+        "donate_or_scrap",
+        "expedite_fresh_batch",
+        "redirect_to_high_velocity_store",
+        "transfer_out_to_sibling",
+        "shift_production_mix"
+      ],
+      "action_templates": [
+        "create_task",
+        "create_recommendation_record",
+        "export_action_csv"
+      ]
+    },
+    "per_template_overrides": {
+      "expiring_batch_risk": {
+        "rule": {"type": "batch_expiry_within_window", "rsl_days_threshold": 2, "min_batch_qty": 1},
+        "severity": {"critical_if_rsl_days_le": 1, "warning_if_rsl_days_le": 2, "default": "warning"}
+      },
+      "shelf_life_shortfall": {
+        "rule": {"type": "sellable_below_horizon_demand", "horizon_weeks": 1}
+      },
+      "excess_inventory_risk": {
+        "rule": {"type": "sustained_excess_over_cover_ceiling", "cover_weeks_threshold": 2, "consecutive_weeks": 2}
+      }
+    },
+    "prioritization_weights": {
+      "revenue_at_risk": 0.25,
+      "stockout_severity": 0.15,
+      "customer_facing_flag": 0.15,
+      "abc_class": 0.10,
+      "lead_time_weeks": 0.05,
+      "expiry_risk": 0.30
+    },
+    "execute_mode": {
+      "dispatch": false,
+      "delivery_mode": "recommendation_record",
+      "csv_path": "/tmp/und_milk_utilisation_actions"
+    },
+    "action_permissions_per_intent": {
+      "show": [],
+      "diagnose": [],
+      "solve": ["create_recommendation_record", "create_task", "export_action_csv"],
+      "simulate": [],
+      "execute": ["create_task", "create_recommendation_record", "export_action_csv"]
+    },
+    "ui_prompts": {
+      "show": [
+        {"id": "show_milk_today", "label": "Today's milk intake", "text": "How much raw milk are we receiving today and what's the current finished-goods on-hand for milk, laban, yogurt, cheese, and juice?"},
+        {"id": "show_at_risk_batches", "label": "At-risk batches", "text": "Which finished-goods batches are at risk of spoilage in the next 48 hours across our network?"},
+        {"id": "show_excess_now", "label": "Where am I excess?", "text": "Where am I carrying perishable inventory that won't sell before expiry given current demand?"},
+        {"id": "show_mix_today", "label": "Current product mix", "text": "What product mix did we run yesterday vs what demand actually called for?"}
+      ],
+      "diagnose": [
+        {"id": "diag_excess_yogurt", "label": "Why yogurt excess", "text": "Why is YOGURT-FRUIT-4P sitting in excess at CDC-DAIRY-02 — give me the root cause."},
+        {"id": "diag_milk_overrun", "label": "Why milk over-produced", "text": "We over-produced milk yesterday — what drove it: forecast bias, intake variance, or downstream miss?"},
+        {"id": "diag_cheese_underrun", "label": "Why feta short", "text": "Why is feta cheese running short at CDC-DAIRY-01 against current orders — diagnose the gap."},
+        {"id": "diag_top_3_perishable", "label": "Top 3 utilisation risks", "text": "Diagnose the top 3 milk-utilisation risks in my network right now, with evidence."}
+      ],
+      "solve": [
+        {"id": "solve_today_mix", "label": "Best mix today", "text": "Given today's milk intake, current FG stock, and the next 48 hours of demand, what's the value-optimal product mix to run?"},
+        {"id": "solve_excess_yogurt", "label": "Move excess yogurt", "text": "I have 800kg of YOGURT-FRUIT-4P at CDC-DAIRY-02 with 3 days RSL — propose a redirect / markdown / donate plan."},
+        {"id": "solve_short_cheese", "label": "Cover feta gap", "text": "Feta will be short at STORE-MALL-01 in 2 days — give me an actionable plan to close the gap."},
+        {"id": "solve_low_waste", "label": "Cut tomorrow's waste", "text": "Build a plan that minimises tomorrow's spoilage value across milk, laban, and yogurt."}
+      ],
+      "simulate": [
+        {"id": "sim_more_milk", "label": "+10% milk tomorrow", "text": "If raw-milk intake comes in 10% above plan tomorrow, what's the value-optimal allocation between flavoured 1L, laban, yogurt, and cheese?"},
+        {"id": "sim_less_milk", "label": "-15% milk tomorrow", "text": "If raw-milk intake comes in 15% below plan tomorrow, which finished goods do I cut first to protect highest-margin products?"},
+        {"id": "sim_shift_to_cheese", "label": "Shift to cheese", "text": "If I divert 20% of today's milk pool to cheese instead of laban, what's the projected revenue + waste change over the next 7 days?"},
+        {"id": "sim_cold_chain_break", "label": "Cold-chain break", "text": "If CDC-DAIRY-01 loses cold chain for 4 hours, what's the value at risk and the best mitigation sequence?"}
+      ]
+    }
+  }
+}

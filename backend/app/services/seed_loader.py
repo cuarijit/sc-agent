@@ -1649,6 +1649,158 @@ def _ensure_replenishment_order_details(db: Session) -> None:
             )
 
 
+_NARRATIVE_OVERRIDES: dict[str, dict[str, float | str]] = {
+    # key: SKU → profile parameters. See _apply_narrative_overrides for how
+    # each field is used. These SKUs are drawn from products.csv only; do
+    # NOT add any SKU from seed_safety.PROTECTED_AGENTIC_SKUS here.
+    "CHOC-001":   {"profile": "seasonal",     "base": 140.0, "amp": 0.55},
+    "SNACK-003":  {"profile": "promo_driven", "base": 110.0, "amp": 0.80},
+    "CEREAL-005": {"profile": "declining",    "base": 95.0,  "trend": -0.015},
+    "GUM-004":    {"profile": "rising",       "base": 80.0,  "trend":  0.020},
+    "PS5-201":    {"profile": "high_variance","base": 220.0, "noise": 0.25},
+    "SWITCH-205": {"profile": "ads_horizon",  "base": 180.0, "amp": 0.22},
+}
+
+
+def _apply_narrative_overrides(
+    forecast_records: list,
+    accuracy_records: list,
+    history_weeks: int,
+    horizon_weeks: int,
+) -> None:
+    """Rewrite baseline/promo/final/actual on a few SKUs so each tells a
+    visually distinct story. Leaves protected agentic SKUs untouched by
+    virtue of not appearing in ``_NARRATIVE_OVERRIDES``.
+
+    Mutates the existing record objects in-place (pre-flush) so the
+    parent seed's idempotency guard still holds.
+    """
+    from .seed_safety import PROTECTED_AGENTIC_SKUS
+
+    # Index records for O(1) lookup of accuracy rows by (sku, loc, week).
+    acc_idx: dict[tuple[str, str, str], object] = {}
+    for a in accuracy_records:
+        acc_idx[(a.sku, a.location, a.week_start)] = a
+
+    # Stable deterministic noise — same pseudo-random sequence per (sku, wi).
+    def _noise(sku: str, wi: int, amp: float) -> float:
+        seed = (sum(ord(c) for c in sku) * 131 + wi * 17) % 2003
+        return ((seed / 2003.0) - 0.5) * 2.0 * amp
+
+    for rec in forecast_records:
+        sku = rec.sku
+        if sku in PROTECTED_AGENTIC_SKUS:
+            continue
+        cfg = _NARRATIVE_OVERRIDES.get(sku)
+        if cfg is None:
+            continue
+
+        # Derive week index from the forecast_records ordering (original loop
+        # yields wi 0..horizon-1 per sku/loc). We recover wi from week_start
+        # by comparing against the earliest week seen on this SKU+loc.
+        pass
+
+    # Second pass that knows each (sku, loc) week-ordering. Build a map
+    # of {(sku, loc): [records sorted by week_start]} once.
+    grouped: dict[tuple[str, str], list] = {}
+    for rec in forecast_records:
+        grouped.setdefault((rec.sku, rec.location), []).append(rec)
+    for key in grouped:
+        grouped[key].sort(key=lambda r: r.week_start)
+
+    for (sku, loc), recs in grouped.items():
+        if sku in PROTECTED_AGENTIC_SKUS:
+            continue
+        cfg = _NARRATIVE_OVERRIDES.get(sku)
+        if cfg is None:
+            continue
+        profile = cfg["profile"]
+        base = float(cfg.get("base", 100.0))
+
+        for wi, rec in enumerate(recs):
+            year_pos = wi / float(max(horizon_weeks, 1))
+            is_history = wi < history_weeks
+
+            if profile == "seasonal":
+                amp = float(cfg.get("amp", 0.5))
+                season = 1.0 + amp * math.sin(2 * math.pi * year_pos - math.pi / 2)
+                baseline = round(base * season, 1)
+                promo = 0.0
+                actual = (
+                    round(baseline * (1.0 + _noise(sku, wi, 0.04)), 1) if is_history else 0.0
+                )
+            elif profile == "promo_driven":
+                amp = float(cfg.get("amp", 0.8))
+                # Four sharp promo spikes at weeks 6, 19, 32, 45.
+                promo_weeks = {6, 19, 32, 45}
+                baseline = round(base * (1.0 + _noise(sku, wi, 0.02)), 1)
+                promo = round(base * amp, 1) if wi in promo_weeks else 0.0
+                actual = (
+                    round((baseline + promo) * (1.0 + _noise(sku, wi, 0.05)), 1)
+                    if is_history
+                    else 0.0
+                )
+            elif profile == "declining":
+                trend = float(cfg.get("trend", -0.015))
+                baseline = round(base * (1.0 + trend * wi), 1)
+                promo = 0.0
+                actual = (
+                    round(baseline * (1.0 + _noise(sku, wi, 0.04)), 1) if is_history else 0.0
+                )
+            elif profile == "rising":
+                trend = float(cfg.get("trend", 0.020))
+                baseline = round(base * (1.0 + trend * wi), 1)
+                promo = 0.0
+                actual = (
+                    round(baseline * (1.0 + _noise(sku, wi, 0.03)), 1) if is_history else 0.0
+                )
+            elif profile == "high_variance":
+                noise_amp = float(cfg.get("noise", 0.25))
+                baseline = base
+                promo = 0.0
+                actual = (
+                    round(baseline * (1.0 + _noise(sku, wi, noise_amp)), 1)
+                    if is_history
+                    else 0.0
+                )
+            elif profile == "ads_horizon":
+                # Baseline trending up, actual following, but with two
+                # mid-horizon promo bumps so the chart shows a clean
+                # divergence between ADS (capped 6 weeks forward) and the
+                # longer final forecast line.
+                amp = float(cfg.get("amp", 0.22))
+                ripple = 1.0 + amp * math.sin(2 * math.pi * year_pos * 1.25)
+                baseline = round(base * ripple, 1)
+                promo = round(base * 0.3, 1) if wi in {12, 38} else 0.0
+                actual = (
+                    round((baseline + promo) * (1.0 + _noise(sku, wi, 0.05)), 1)
+                    if is_history
+                    else 0.0
+                )
+            else:
+                continue
+
+            final = round(baseline + promo, 1)
+            consensus = round(baseline + promo * 0.9, 1)
+            rec.baseline_qty = baseline
+            rec.promo_lift_qty = promo
+            rec.consensus_qty = consensus
+            rec.final_forecast_qty = final
+            rec.actual_qty = actual if is_history else 0.0
+
+            if is_history and actual > 0:
+                err = abs(final - actual) / actual * 100
+                bias = (final - actual) / actual * 100
+                acc = acc_idx.get((sku, loc, rec.week_start))
+                if acc is not None:
+                    acc.forecast_qty = final
+                    acc.actual_qty = actual
+                    acc.mape = round(err, 1)
+                    acc.bias = round(bias, 1)
+                    acc.wmape = round(err * 0.95, 1)
+                    acc.tracking_signal = round(bias / max(1, err) * 2.0, 2)
+
+
 def _seed_demand_planning(db: Session) -> None:
     """Seed demand planning / IBP tables using existing master data."""
     if db.query(DemandForecast).count() > 0:
@@ -1760,8 +1912,56 @@ def _seed_demand_planning(db: Session) -> None:
                         wmape=round(error * 0.95, 1),
                         tracking_signal=round(bias_val / max(1, error) * 2.0, 2),
                     ))
+    # Overwrite a handful of non-protected SKUs with more distinct narratives
+    # so the baseline forecast chart is readable in a demo (each SKU tells a
+    # different story instead of all lines overlapping at ~80-100). Agentic
+    # AI demos read network_* tables, not demand_forecast, so this is safe —
+    # see backend/app/services/seed_safety.py for the guarantee.
+    _apply_narrative_overrides(forecast_records, accuracy_records, history_weeks, horizon_weeks)
+
     db.add_all(forecast_records)
     db.add_all(accuracy_records)
+    db.flush()
+
+    # Puls8 DBF published forecast — emitted by the Driver-Based Forecast
+    # workbench, then "Publish to Demand Forecasting" inserts these rows
+    # into demand_forecast with forecast_source='puls8_dbf'. Seed one DBF
+    # row per (sku, location, week) so the Demand Forecasting workbench
+    # has a populated "Puls8 DBF" series alongside statistical / ML /
+    # consensus instead of an empty line.
+    dbf_records = []
+    for si, sku in enumerate(skus):
+        sku_seed = sum(ord(c) for c in sku) % 11
+        seasonal_phase = (si * 0.7) % (2 * math.pi)
+        annual_trend = 0.10 if si % 2 == 0 else -0.05
+        for li, loc in enumerate(locs):
+            demand_base = 80.0 + sku_seed * 3.5 + li * 2.0
+            for wi, ws in enumerate(weeks):
+                year_pos = wi / 52.0
+                annual_season = 1.0 + 0.18 * math.sin(2 * math.pi * year_pos + seasonal_phase)
+                qtr_ripple = 1.0 + 0.05 * math.sin((wi + sku_seed) * (math.pi / 6))
+                trend_factor = 1.0 + annual_trend * year_pos
+                # DBF is consumption-driven so it tends to run slightly above
+                # the pure statistical baseline because it captures price /
+                # ACV / display / feature uplifts.
+                driver_uplift = 1.03 + ((si * 13 + li * 7) % 5) * 0.008
+                base_qty = demand_base * annual_season * qtr_ripple * trend_factor * driver_uplift
+                promo_window = wi % 13 in (8, 9)
+                if promo_window and (si + li) % 3 == 0:
+                    base_qty *= 1.20
+                final_dbf = round(base_qty, 1)
+                dbf_records.append(DemandForecast(
+                    sku=sku, location=loc, week_start=ws,
+                    baseline_qty=round(base_qty * 0.85, 1),
+                    promo_lift_qty=round(base_qty * 0.15, 1) if promo_window else 0.0,
+                    consensus_qty=final_dbf,
+                    final_forecast_qty=final_dbf,
+                    actual_qty=0.0,  # actuals are tracked via the statistical row
+                    forecast_source="puls8_dbf",
+                    updated_by="dbf_workbench",
+                    updated_at=f"{ws}T08:30:00",
+                ))
+    db.add_all(dbf_records)
     db.flush()
 
     promo_records = []

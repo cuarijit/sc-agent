@@ -28,6 +28,8 @@ interface PageShellProps {
   helpId?: string;
   onOpenHelp?: () => void;
   rightActions?: ReactNode;
+  bodyClassName?: string;
+  scrollClassName?: string;
 }
 
 export function PageShell({
@@ -37,6 +39,8 @@ export function PageShell({
   helpId,
   onOpenHelp,
   rightActions,
+  bodyClassName,
+  scrollClassName,
   children,
 }: PropsWithChildren<PageShellProps>) {
   const navigate = useNavigate();
@@ -44,7 +48,7 @@ export function PageShell({
   const shellCtx = (useOutletContext() ?? null) as ShellContextValue | null;
 
   return (
-    <div className="pg-scroll">
+    <div className={scrollClassName ? `pg-scroll ${scrollClassName}` : "pg-scroll"}>
       <Paper elevation={0} className="pg-container">
         <div className="pg-header">
           <Stack
@@ -123,7 +127,10 @@ export function PageShell({
             </Stack>
           </Stack>
         </div>
-        <div className="pg-body" data-page-shell-body>
+        <div
+          className={bodyClassName ? `pg-body ${bodyClassName}` : "pg-body"}
+          data-page-shell-body
+        >
           {children}
         </div>
       </Paper>

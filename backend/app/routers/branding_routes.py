@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 BRANDING_PATH = REPO_ROOT / "config" / "branding" / "branding.json"
 HELP_DIR = REPO_ROOT / "data" / "help" / "content"
 
-_SLUG_RE = re.compile(r"^[a-zA-Z0-9_]+$")
+_SLUG_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 @router.get("/api/branding")
@@ -42,6 +42,8 @@ def get_branding() -> dict:
             base["company_logo"] = live.company_logo
         if live.customer_logo is not None:
             base["customer_logo"] = live.customer_logo
+        if live.tenant_logo is not None:
+            base["tenant_logo"] = live.tenant_logo
     except Exception:
         pass
     base.setdefault("app_name", "Supply Chain Planning")
@@ -52,6 +54,18 @@ def get_branding() -> dict:
 def get_help(slug: str) -> dict:
     if not _SLUG_RE.match(slug):
         raise HTTPException(status_code=400, detail="Invalid slug.")
+    # Primary path: delegate to HelpService so admin edits / uploads
+    # become live without touching disk. Legacy file fallback below for
+    # docs that pre-date the manifest.
+    try:
+        from ..services.help_service import HelpEntryNotFound, get_help_service
+
+        content = get_help_service().get_content(slug)
+        return {"slug": slug, "content": content}
+    except HelpEntryNotFound:
+        pass
+    except Exception:  # noqa: BLE001
+        pass
     candidate = HELP_DIR / f"{slug}.md"
     if not candidate.exists() or not candidate.is_file():
         raise HTTPException(status_code=404, detail=f"No help available for '{slug}'.")

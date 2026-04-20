@@ -36,9 +36,16 @@ class LibraryAsset:
 class BrandingSettings:
     company_logo: str | None = None
     customer_logo: str | None = None
+    # Tenant / customer-account logo shown on the RIGHT of the brand strip.
+    # Each customer can upload their own brand mark via Branding & Logos.
+    tenant_logo: str | None = None
 
     def to_dict(self) -> dict[str, str | None]:
-        return {"company_logo": self.company_logo, "customer_logo": self.customer_logo}
+        return {
+            "company_logo": self.company_logo,
+            "customer_logo": self.customer_logo,
+            "tenant_logo": self.tenant_logo,
+        }
 
 
 class BrandingStorage(Protocol):
@@ -73,6 +80,7 @@ class LocalFsBrandingStorage:
         return BrandingSettings(
             company_logo=_normalise(payload.get("company_logo")),
             customer_logo=_normalise(payload.get("customer_logo")),
+            tenant_logo=_normalise(payload.get("tenant_logo")),
         )
 
     def write(self, settings: BrandingSettings) -> BrandingSettings:

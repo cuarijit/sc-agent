@@ -19,7 +19,9 @@ import SyncAltOutlinedIcon from "@mui/icons-material/SyncAltOutlined";
 import AttachMoneyOutlinedIcon from "@mui/icons-material/AttachMoneyOutlined";
 import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
 import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
+import InsightsOutlinedIcon from "@mui/icons-material/InsightsOutlined";
 import PeopleOutlineOutlinedIcon from "@mui/icons-material/PeopleOutlineOutlined";
+import TuneOutlinedIcon from "@mui/icons-material/TuneOutlined";
 import type { SvgIconComponent } from "@mui/icons-material";
 
 import { ROUTE_PATHS } from "./routePaths";
@@ -39,10 +41,10 @@ export interface NavModule {
   items: NavItem[];
 }
 
-/** Intelligent Planning: forecasting, collaborative planning, S&OP, financial, trade, analytics */
+/** Puls8 Demand Planning: forecasting, collaborative planning, S&OP, financial, trade, analytics */
 export const MODULE_DEMAND_ANALYSIS: NavModule = {
   id: "intelligent-planning",
-  label: "Intelligent Planning",
+  label: "Puls8 Demand Planning",
   items: [
     { id: "demand-forecasting", label: "Demand Forecasting", route: ROUTE_PATHS.demandForecasting, icon: TrendingUpOutlinedIcon },
     { id: "collaborative-planning", label: "Collaborative Planning", route: ROUTE_PATHS.demandCollaborative, icon: GroupsOutlinedIcon },
@@ -56,16 +58,26 @@ export const MODULE_DEMAND_ANALYSIS: NavModule = {
   ],
 };
 
-/** Smart Execution: Dashboard, Network, Parameters, Replenishment, Analytics */
+/** Puls8 Supply Planning: Dashboard, Network, Parameters, Replenishment, Analytics */
 export const MODULE_PLANNING_REPLENISHMENT: NavModule = {
   id: "smart-execution",
-  label: "Smart Execution",
+  label: "Puls8 Supply Planning",
   items: [
     { id: "dashboard", label: "Dashboard", route: ROUTE_PATHS.dashboard, icon: DashboardOutlinedIcon },
     { id: "network", label: "Network", route: ROUTE_PATHS.network, icon: HubOutlinedIcon },
     { id: "parameters", label: "Parameters", route: ROUTE_PATHS.parameters, icon: SettingsSuggestOutlinedIcon },
     { id: "replenishment", label: "Replenishment", route: ROUTE_PATHS.replenishment, icon: LocalShippingOutlinedIcon },
     { id: "maintenance", label: "Analytics", route: ROUTE_PATHS.maintenance, icon: TableViewOutlinedIcon },
+  ],
+};
+
+/** Puls8 DBF: driver-based forecasting (consumption + shipment). */
+export const MODULE_DBF: NavModule = {
+  id: "puls8-dbf",
+  label: "Puls8 DBF",
+  items: [
+    { id: "dbf-workbench", label: "Driver Forecast Workbench", route: ROUTE_PATHS.dbfWorkbench, icon: TuneOutlinedIcon },
+    { id: "dbf-analytics", label: "Analytics", route: ROUTE_PATHS.dbfAnalytics, icon: InsightsOutlinedIcon },
   ],
 };
 
@@ -96,6 +108,7 @@ export const MODULE_ADMINISTRATION: NavModule = {
 export const NAV_MODULES: NavModule[] = [
   MODULE_DEMAND_ANALYSIS,
   MODULE_PLANNING_REPLENISHMENT,
+  MODULE_DBF,
   MODULE_AGENTIC_AI,
   MODULE_ADMINISTRATION,
 ];

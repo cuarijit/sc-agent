@@ -37,6 +37,8 @@ from ...models import (
     NetworkActualWeekly,
     NetworkForecastWeekly,
     NetworkInventorySnapshot,
+    NetworkLane,
+    NetworkNode,
     NetworkSourcingRule,
     ParameterValue,
     PosHourlyActual,
@@ -152,13 +154,13 @@ def _ensure_reference_instance_bindings(db: Session) -> None:
                 "source_ref": source_ref,
                 "field_map": field_map,
             })
-        # Perishable instance also binds batch_inventory.
+        # Perishable instance also binds batch_inventory plus the four slots
+        # that are natively owned by the allocation and demand-sensing agents.
+        # Seeding them here lets the perishable-dairy-diagnostic capability
+        # check light up all slots green without invoking the other agents.
         if instance_id == "perishable-dairy-diagnostic":
-            svc.upsert_instance_binding(instance_id, {
-                "slot_key": "batch_inventory",
-                "binding_kind": "sql_table",
-                "source_ref": "inventory_batch_snapshot",
-                "field_map": {
+            perishable_extras: list[tuple[str, str, str, dict[str, str]]] = [
+                ("batch_inventory", "sql_table", "inventory_batch_snapshot", {
                     "sku": "sku",
                     "node_id": "node_id",
                     "batch_id": "batch_id",
@@ -167,8 +169,44 @@ def _ensure_reference_instance_bindings(db: Session) -> None:
                     "received_date": "received_date",
                     "quality_hold_flag": "quality_hold_flag",
                     "as_of_date": "as_of_date",
-                },
-            })
+                }),
+                ("delivery_routes", "sql_table", "delivery_routes", {
+                    "route_id": "route_id",
+                    "scheduled_date": "scheduled_date",
+                    "stops_json": "stops_json",
+                    "departure_time": "departure_time",
+                    "capacity_units": "capacity_units",
+                    "window_end_time": "window_end_time",
+                    "vehicle_id": "vehicle_id",
+                    "origin_node_id": "origin_node_id",
+                }),
+                ("store_velocity", "sql_table", "store_velocity", {
+                    "sku": "sku",
+                    "node_id": "node_id",
+                    "units_per_hour_avg": "units_per_hour_avg",
+                    "date": "date",
+                    "peak_hour_local": "peak_hour_local",
+                }),
+                ("pos_hourly", "sql_table", "pos_hourly_actual", {
+                    "sku": "sku",
+                    "node_id": "node_id",
+                    "timestamp_hour": "timestamp_hour",
+                    "units_sold": "units_sold",
+                    "on_hand_snapshot_qty": "on_hand_snapshot_qty",
+                }),
+                ("ramadan_calendar", "sql_table", "ramadan_calendar", {
+                    "calendar_date": "calendar_date",
+                    "ramadan_day": "ramadan_day",
+                    "iftar_local_time": "iftar_local_time",
+                }),
+            ]
+            for slot_key, kind, source_ref, field_map in perishable_extras:
+                svc.upsert_instance_binding(instance_id, {
+                    "slot_key": slot_key,
+                    "binding_kind": kind,
+                    "source_ref": source_ref,
+                    "field_map": field_map,
+                })
 
     # Allocation instance has a different agent_type + slot set.
     alloc_row = (
@@ -664,16 +702,16 @@ def _ensure_instance_and_bindings(db: Session) -> None:
 # ============================================================================
 
 _DAIRY_SKUS = [
-    # sku, name, brand, category, abc, shelf_life_days, demand_std
-    ("MILK-FULL-1L",        "Full-Cream Milk 1L",        "Zebra Dairy", "Dairy",     "A",  7, 20.0),
-    ("MILK-LOW-1L",         "Low-Fat Milk 1L",           "Zebra Dairy", "Dairy",     "A",  7, 15.0),
-    ("LABAN-500ML",         "Laban 500ml",               "Zebra Dairy", "Dairy",     "A", 14, 25.0),
-    ("YOGURT-PLAIN-500G",   "Plain Yogurt 500g",         "Zebra Dairy", "Dairy",     "A", 21, 18.0),
-    ("YOGURT-FRUIT-4P",     "Fruit Yogurt 4-pack",       "Zebra Dairy", "Dairy",     "B", 21, 14.0),
-    ("CHEESE-SLICE-200G",   "Cheese Slices 200g",        "Zebra Dairy", "Dairy",     "B", 30, 10.0),
-    ("CHEESE-FETA-400G",    "Feta Cheese 400g",          "Zebra Dairy", "Dairy",     "A", 30, 12.0),
-    ("JUICE-ORANGE-1L",     "Orange Juice 1L (Chilled)", "Zebra Dairy", "Beverages", "A", 14, 18.0),
-    ("JUICE-MANGO-1L",      "Mango Juice 1L (Chilled)",  "Zebra Dairy", "Beverages", "B", 14, 15.0),
+    # sku, name, brand, category, abc, shelf_life_days, demand_std, unit_price (SAR — illustrative)
+    ("MILK-FULL-1L",        "Full-Cream Milk 1L",        "Zebra Dairy", "Dairy",     "A",  7, 20.0,  4.50),
+    ("MILK-LOW-1L",         "Low-Fat Milk 1L",           "Zebra Dairy", "Dairy",     "A",  7, 15.0,  4.50),
+    ("LABAN-500ML",         "Laban 500ml",               "Zebra Dairy", "Dairy",     "A", 14, 25.0,  3.00),
+    ("YOGURT-PLAIN-500G",   "Plain Yogurt 500g",         "Zebra Dairy", "Dairy",     "A", 21, 18.0,  6.50),
+    ("YOGURT-FRUIT-4P",     "Fruit Yogurt 4-pack",       "Zebra Dairy", "Dairy",     "B", 21, 14.0, 12.00),
+    ("CHEESE-SLICE-200G",   "Cheese Slices 200g",        "Zebra Dairy", "Dairy",     "B", 30, 10.0, 18.00),
+    ("CHEESE-FETA-400G",    "Feta Cheese 400g",          "Zebra Dairy", "Dairy",     "A", 30, 12.0, 28.00),
+    ("JUICE-ORANGE-1L",     "Orange Juice 1L (Chilled)", "Zebra Dairy", "Beverages", "A", 14, 18.0,  8.00),
+    ("JUICE-MANGO-1L",      "Mango Juice 1L (Chilled)",  "Zebra Dairy", "Beverages", "B", 14, 15.0,  8.00),
 ]
 
 _DAIRY_LOCATIONS = [
@@ -696,7 +734,7 @@ _DAIRY_CDCS = ["CDC-DAIRY-01", "CDC-DAIRY-02"]
 
 
 def _upsert_dairy_products(db: Session) -> None:
-    for sku, name, brand, category, abc, shelf_life, std in _DAIRY_SKUS:
+    for sku, name, brand, category, abc, shelf_life, std, unit_price in _DAIRY_SKUS:
         existing = db.query(ProductMaster).filter(ProductMaster.sku == sku).first()
         if existing is None:
             db.add(ProductMaster(
@@ -707,6 +745,7 @@ def _upsert_dairy_products(db: Session) -> None:
                 shelf_life_days=shelf_life,
                 cold_chain_flag=True,
                 category_perishable=True,
+                unit_price=unit_price,
             ))
         else:
             existing.name = name
@@ -716,6 +755,7 @@ def _upsert_dairy_products(db: Session) -> None:
             existing.shelf_life_days = shelf_life
             existing.cold_chain_flag = True
             existing.category_perishable = True
+            existing.unit_price = unit_price
         cfg = db.query(InventoryProjectionProductConfig).filter(
             InventoryProjectionProductConfig.product_id == sku
         ).first()
@@ -742,6 +782,112 @@ def _upsert_dairy_locations(db: Session) -> None:
         else:
             existing.name = name
             existing.location_type = loc_type
+
+
+# Geographic spread for the dairy KSA network — illustrative coordinates.
+_DAIRY_NODE_COORDS: dict[str, tuple[float, float]] = {
+    "PLANT-DAIRY-01":   (24.7136, 46.6753),  # Riyadh
+    "RDC-DAIRY-NORTH":  (26.4207, 50.0888),  # Al Khobar
+    "RDC-DAIRY-SOUTH":  (21.4858, 39.1925),  # Jeddah
+    "CDC-DAIRY-01":     (24.6877, 46.7219),  # Riyadh
+    "CDC-DAIRY-02":     (26.4282, 50.1031),  # Dammam
+    "STORE-EAST":       (26.2854, 50.2078),  # Al Khobar
+    "STORE-WEST":       (21.5433, 39.1728),  # Jeddah
+    "STORE-MALL-01":    (24.7741, 46.7386),  # Riyadh
+    "STORE-MALL-02":    (24.6680, 46.6900),
+    "STORE-CITY":       (24.7244, 46.6406),
+    "STORE-AIRPORT":    (24.9576, 46.6988),
+}
+
+# Per-tier defaults for storage / throughput / handling cost so the agents can
+# quote real numbers in their narratives.
+_DAIRY_NODE_TIER: dict[str, dict[str, float | int | bool | str]] = {
+    "plant": {"storage_capacity": 80000.0, "throughput_limit": 60000.0, "handling_cost_per_unit": 0.20, "holding_cost_per_unit": 0.10},
+    "rdc":   {"storage_capacity": 25000.0, "throughput_limit": 18000.0, "handling_cost_per_unit": 0.30, "holding_cost_per_unit": 0.15},
+    "cdc":   {"storage_capacity": 12000.0, "throughput_limit":  9000.0, "handling_cost_per_unit": 0.40, "holding_cost_per_unit": 0.18},
+    "store": {"storage_capacity":   800.0, "throughput_limit":   400.0, "handling_cost_per_unit": 0.60, "holding_cost_per_unit": 0.25},
+}
+
+
+def _upsert_dairy_network_nodes(db: Session) -> None:
+    """Insert dairy locations into network_nodes so lanes can FK-reference them.
+
+    The dairy fixture historically only seeded LocationMaster; the agents that
+    rely on network_lanes (allocation cost narrative) need the same code in
+    network_nodes. Idempotent.
+    """
+    for code, name, loc_type, region, _city, _state, _echelon in _DAIRY_LOCATIONS:
+        lat, lon = _DAIRY_NODE_COORDS.get(code, (24.7136, 46.6753))
+        tier = _DAIRY_NODE_TIER.get(loc_type, _DAIRY_NODE_TIER["store"])
+        existing = db.query(NetworkNode).filter(NetworkNode.node_id == code).first()
+        if existing is None:
+            db.add(NetworkNode(
+                node_id=code, name=name, node_type=loc_type, region=region,
+                lat=lat, lon=lon, status="active",
+                storage_capacity=float(tier["storage_capacity"]),
+                throughput_limit=float(tier["throughput_limit"]),
+                crossdock_capable=(loc_type in ("rdc", "cdc")),
+                holding_cost_per_unit=float(tier["holding_cost_per_unit"]),
+                handling_cost_per_unit=float(tier["handling_cost_per_unit"]),
+                service_level_target=0.97,
+                production_batch_size=(1000.0 if loc_type == "plant" else 0.0),
+                production_freeze_days=(2 if loc_type == "plant" else 0),
+                cycle_time_days=(3.0 if loc_type == "plant" else 1.0),
+                shelf_space_limit=float(tier["storage_capacity"]) * 0.6,
+                default_strategy=("push" if loc_type == "plant" else "pull"),
+                metadata_json='{"site": "dairy_demo", "country": "SA"}',
+            ))
+        else:
+            existing.lat = lat
+            existing.lon = lon
+            existing.region = region
+            existing.node_type = loc_type
+
+
+# Lanes: PLANT → both RDCs, each RDC → its CDC, each CDC → its served stores.
+# Cost / transit numbers are illustrative SAR values.
+_DAIRY_LANES: list[tuple[str, str, str, float, float]] = [
+    # (origin, dest, mode, cost_per_unit, transit_time_mean_days)
+    ("PLANT-DAIRY-01",   "RDC-DAIRY-NORTH",  "truck",  0.45, 1.0),
+    ("PLANT-DAIRY-01",   "RDC-DAIRY-SOUTH",  "truck",  0.55, 1.5),
+    ("RDC-DAIRY-NORTH",  "CDC-DAIRY-02",     "truck",  0.30, 0.5),
+    ("RDC-DAIRY-SOUTH",  "CDC-DAIRY-01",     "truck",  0.35, 0.6),
+    # CDC-01 → its 5 stores
+    ("CDC-DAIRY-01",     "STORE-WEST",       "truck",  0.40, 0.8),
+    ("CDC-DAIRY-01",     "STORE-MALL-01",    "truck",  0.20, 0.2),
+    ("CDC-DAIRY-01",     "STORE-MALL-02",    "truck",  0.20, 0.2),
+    ("CDC-DAIRY-01",     "STORE-CITY",       "truck",  0.18, 0.2),
+    ("CDC-DAIRY-01",     "STORE-AIRPORT",    "truck",  0.22, 0.3),
+    # CDC-02 → its 1 store (East)
+    ("CDC-DAIRY-02",     "STORE-EAST",       "truck",  0.25, 0.3),
+    # Cross-CDC backup lanes (sibling rebalance)
+    ("CDC-DAIRY-01",     "CDC-DAIRY-02",     "truck",  0.50, 0.8),
+    ("CDC-DAIRY-02",     "CDC-DAIRY-01",     "truck",  0.50, 0.8),
+    # Inter-store transfers used by intra_day_emergency_transfer
+    ("STORE-MALL-01",    "STORE-EAST",       "van",    0.80, 0.2),
+    ("STORE-MALL-01",    "STORE-CITY",       "van",    0.60, 0.1),
+    ("STORE-CITY",       "STORE-MALL-01",    "van",    0.60, 0.1),
+    ("STORE-MALL-02",    "STORE-MALL-01",    "van",    0.50, 0.1),
+]
+
+
+def _upsert_dairy_lanes(db: Session) -> None:
+    """Insert dairy lanes so allocation + sourcing narratives can quote cost.
+    Idempotent — replaces only the lanes whose lane_id has the DAIRY-* prefix.
+    """
+    db.query(NetworkLane).filter(NetworkLane.lane_id.like("DAIRY-LANE-%")).delete(
+        synchronize_session=False
+    )
+    for idx, (origin, dest, mode, cost, transit) in enumerate(_DAIRY_LANES, start=1):
+        db.add(NetworkLane(
+            lane_id=f"DAIRY-LANE-{idx:03d}",
+            origin_node_id=origin, dest_node_id=dest,
+            mode=mode, lane_status="active",
+            cost_function_type="linear",
+            cost_per_unit=cost, cost_per_mile=0.0, fixed_cost=0.0,
+            transit_time_mean_days=transit, transit_time_std_days=0.1,
+            capacity_limit=15000.0, is_default_route=True,
+        ))
 
 
 def _upsert_dairy_sourcing(db: Session) -> None:
@@ -841,7 +987,7 @@ def _upsert_dairy_actuals(db: Session) -> None:
     db.query(NetworkActualWeekly).filter(
         NetworkActualWeekly.sku.in_([s[0] for s in _DAIRY_SKUS]),
     ).delete(synchronize_session=False)
-    for sku, _, _, _, _, _, _ in _DAIRY_SKUS:
+    for sku, _, _, _, _, _, _, _ in _DAIRY_SKUS:
         base = _DAIRY_DEMAND[sku]
         for offset in range(-6, 0):
             week_start = (DEMO_BASE_WEEK + timedelta(days=7 * offset)).isoformat()
@@ -1091,6 +1237,9 @@ def _upsert_perishable_dairy_fixture(db: Session) -> None:
     _upsert_dairy_products(db)
     db.flush()
     _upsert_dairy_locations(db)
+    _upsert_dairy_network_nodes(db)  # mirror locations into network_nodes for lane FKs
+    db.flush()
+    _upsert_dairy_lanes(db)  # PLANT → RDC → CDC → STORE + inter-CDC + inter-store
     db.flush()
     _upsert_dairy_sourcing(db)
     db.flush()

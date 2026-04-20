@@ -21,6 +21,7 @@ interface BrandingPayload {
   app_name?: string;
   company_logo?: string | null;
   customer_logo?: string | null;
+  tenant_logo?: string | null;
 }
 
 function initials(name: string, username: string): string {
@@ -49,13 +50,26 @@ export default function TopHeader({
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [branding, setBranding] = useState<BrandingPayload>({});
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/branding`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setBranding(d); })
-      .catch(() => {});
+    let cancelled = false;
+    const load = () => {
+      fetch(`${API_BASE_URL}/api/branding`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d && !cancelled) setBranding(d); })
+        .catch(() => {});
+    };
+    load();
+    // Live refresh: BrandingPage dispatches this event after a successful save
+    // so the header picks up new logos without requiring a hard refresh.
+    const onChanged = () => load();
+    window.addEventListener("branding:changed", onChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("branding:changed", onChanged);
+    };
   }, []);
   const companyLogoUrl = resolveBrandingAssetUrl(branding.company_logo);
   const customerLogoUrl = resolveBrandingAssetUrl(branding.customer_logo);
+  const tenantLogoUrl = resolveBrandingAssetUrl(branding.tenant_logo);
   const [pwOpen, setPwOpen] = useState(false);
   const [pwCurrent, setPwCurrent] = useState("");
   const [pwNew, setPwNew] = useState("");
@@ -71,7 +85,7 @@ export default function TopHeader({
       <Stack direction="row" alignItems="center" justifyContent="space-between" className="app-brand-strip">
         <Stack direction="row" alignItems="center" spacing={1.25} sx={{ minWidth: 0, overflow: "hidden" }}>
           <AppsOutlinedIcon sx={{ fontSize: 18, color: "rgba(217, 243, 255, 0.88)", flexShrink: 0 }} />
-          {/* Company logo: when set, replaces the app-name text. Otherwise show text. */}
+          {/* Company logo (LEFT): Demand Chain AI mark. Falls back to app-name text. */}
           {companyLogoUrl ? (
             <Box
               component="img"
@@ -89,7 +103,7 @@ export default function TopHeader({
             </Typography>
           )}
           <Box className="brand-divider" sx={{ flexShrink: 0 }} />
-          {/* Customer/module logo: when set, replaces the DCAI text fallback. */}
+          {/* Customer / module logo (LEFT, after divider): Puls8 module mark. */}
           {customerLogoUrl ? (
             <Box
               component="img"
@@ -108,6 +122,26 @@ export default function TopHeader({
         </Stack>
 
         <Stack direction="row" alignItems="center" spacing={0.6}>
+          {/* Tenant / customer-account logo (RIGHT): each customer can upload
+              their own brand mark via Branding & Logos. */}
+          {tenantLogoUrl ? (
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                pr: 1,
+                mr: 0.5,
+                borderRight: "1px solid rgba(217,243,255,0.18)",
+              }}
+            >
+              <Box
+                component="img"
+                src={tenantLogoUrl}
+                alt="Customer logo"
+                sx={{ height: 26, maxWidth: 160, objectFit: "contain", display: "block" }}
+              />
+            </Box>
+          ) : null}
           <Typography variant="caption" sx={{ color: "rgba(217, 243, 255, 0.45)", fontSize: 9, fontFamily: '"Montserrat", sans-serif', fontWeight: 500 }}>
             v1.0.0
           </Typography>

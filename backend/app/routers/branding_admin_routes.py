@@ -24,6 +24,7 @@ def get_branding(_: AuthUser = Depends(require_admin)) -> dict:
     return {
         "company_logo": s.company_logo,
         "customer_logo": s.customer_logo,
+        "tenant_logo": s.tenant_logo,
     }
 
 
@@ -32,11 +33,13 @@ def put_branding(payload: dict, _: AuthUser = Depends(require_admin)) -> dict:
     settings = BrandingSettings(
         company_logo=payload.get("company_logo"),
         customer_logo=payload.get("customer_logo"),
+        tenant_logo=payload.get("tenant_logo"),
     )
     saved = get_branding_storage().write(settings)
     return {
         "company_logo": saved.company_logo,
         "customer_logo": saved.customer_logo,
+        "tenant_logo": saved.tenant_logo,
     }
 
 

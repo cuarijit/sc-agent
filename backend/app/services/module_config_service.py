@@ -279,7 +279,7 @@ class ModuleConfigService:
         defaults = [
             {
                 "module_slug": "smart-execution",
-                "label": "Smart Execution",
+                "label": "Puls8 Supply Planning",
                 "description": "Dashboard, Network, Parameters, Replenishment, Analytics",
                 "icon": "DashboardOutlinedIcon", "sort_order": 1,
                 "pages": [
@@ -292,7 +292,7 @@ class ModuleConfigService:
             },
             {
                 "module_slug": "intelligent-planning",
-                "label": "Intelligent Planning",
+                "label": "Puls8 Demand Planning",
                 "description": "Forecasting, S&OP, financial, trade promotion",
                 "icon": "TrendingUpOutlinedIcon", "sort_order": 2,
                 "pages": [
@@ -321,14 +321,38 @@ class ModuleConfigService:
                 ],
             },
             {
+                "module_slug": "puls8-dbf",
+                "label": "Puls8 DBF",
+                "description": "Driver-based forecasting: independently forecast each demand "
+                               "driver (price, distribution, display, feature), compose a "
+                               "consumption forecast, and derive shipment forecast.",
+                "icon": "InsightsOutlinedIcon", "sort_order": 4,
+                "pages": [
+                    ("dbf-workbench", "Driver Forecast Workbench", "TuneOutlinedIcon"),
+                    ("dbf-analytics", "Analytics", "AssessmentOutlinedIcon"),
+                ],
+            },
+            {
                 "module_slug": "administration",
                 "label": "Administration",
-                "description": "Users, roles, modules, branding",
-                "icon": "AdminPanelSettingsOutlinedIcon", "sort_order": 4,
+                "description": "Users, roles, modules, branding, documentation",
+                "icon": "AdminPanelSettingsOutlinedIcon", "sort_order": 5,
                 "pages": [
                     ("admin-users", "Users & Roles", "PeopleAltOutlinedIcon"),
                     ("admin-modules", "Modules & Pages", "ViewModuleOutlinedIcon"),
                     ("admin-branding", "Branding & Logos", "PaletteOutlinedIcon"),
+                    ("admin-documentation", "Documentation", "MenuBookOutlinedIcon"),
+                ],
+            },
+            {
+                "module_slug": "customer",
+                "label": "Customer",
+                "description": "Customer-facing highlights, key take-aways, and operational challenges",
+                "icon": "PeopleAltOutlinedIcon", "sort_order": 6,
+                "pages": [
+                    ("customer-highlights",    "Solution Overview", "AutoAwesomeOutlinedIcon"),
+                    ("customer-key-takeaways", "Key Takeaways",     "TipsAndUpdatesOutlinedIcon"),
+                    ("customer-challenges",    "Challenges",        "FlagOutlinedIcon"),
                 ],
             },
         ]
@@ -346,14 +370,12 @@ class ModuleConfigService:
                 })
                 created.append(slug)
             else:
-                # Upgrade: ship label/description/icon updates (e.g. Agentic AI
-                # → Puls8 Agents) without clobbering admin-edited rows silently.
-                now = _now_iso()
-                self.db.execute(text(
-                    "UPDATE modules SET label = :l, description = :d, icon = :i, updated_at = :u "
-                    "WHERE module_slug = :s"
-                ), dict(l=mod["label"], d=mod["description"], i=mod["icon"], u=now, s=slug))
-                self.db.commit()
+                # Existing row — DO NOT overwrite label/description/icon.
+                # An earlier version of this seeder force-updated those
+                # fields on every restart, which silently reverted any
+                # admin rename the user did via the Module Configurator.
+                # Once a module exists, only Module Configurator edits
+                # (or an explicit migration) should change its label.
                 skipped.append(slug)
             # Always upsert pages — this is how we ship new pages without a
             # destructive reseed.

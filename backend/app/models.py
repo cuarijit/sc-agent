@@ -20,6 +20,7 @@ class ProductMaster(Base):
     shelf_life_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cold_chain_flag: Mapped[bool] = mapped_column(Boolean, default=False)
     category_perishable: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    unit_price: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class InventoryProjectionProductConfig(Base):
@@ -1101,6 +1102,162 @@ class ModulePageAgentInstanceRecord(Base):
     agent_instance_id: Mapped[int] = mapped_column(Integer, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[str] = mapped_column(String, index=True)
+
+
+# ============================================================================
+# Puls8 DBF — Driver-Based Forecast tables.
+# Grain primer:
+#   • driver / consumption tables: scenario × SKU × Customer × Week
+#   • shipment forecast:           scenario × SKU × Customer × Location × Week
+#   • elasticity:                  SKU × Customer × driver_name (scenario-independent)
+#   • regression coefficients:     SKU × Location          (scenario-independent)
+#   • accuracy snapshot:           scenario × tier × entity × week
+# Production baseline = the lone scenario row with parent_scenario_id IS NULL
+# and status='published'. All other rows are draft / archived scenarios.
+# ============================================================================
+
+
+class DbfScenario(Base):
+    __tablename__ = "dbf_scenarios"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scenario_id: Mapped[str] = mapped_column(String, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String, default="draft", index=True)
+    created_by: Mapped[str] = mapped_column(String, default="system")
+    parent_scenario_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    created_at: Mapped[str] = mapped_column(String, index=True)
+    updated_at: Mapped[str] = mapped_column(String, index=True)
+
+
+class DbfDriverPrice(Base):
+    __tablename__ = "dbf_driver_price"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scenario_id: Mapped[str] = mapped_column(String, index=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    customer_id: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    base_price: Mapped[float] = mapped_column(Float, default=0.0)
+    promo_price: Mapped[float] = mapped_column(Float, default=0.0)
+    discount_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    price_index: Mapped[float] = mapped_column(Float, default=1.0)
+
+
+class DbfDriverDistribution(Base):
+    __tablename__ = "dbf_driver_distribution"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scenario_id: Mapped[str] = mapped_column(String, index=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    customer_id: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    acv_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    tdp: Mapped[float] = mapped_column(Float, default=0.0)
+    distribution_index: Mapped[float] = mapped_column(Float, default=1.0)
+
+
+class DbfDriverDisplay(Base):
+    __tablename__ = "dbf_driver_display"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scenario_id: Mapped[str] = mapped_column(String, index=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    customer_id: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    display_count: Mapped[float] = mapped_column(Float, default=0.0)
+    linear_feet: Mapped[float] = mapped_column(Float, default=0.0)
+    end_cap_flag: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class DbfDriverFeature(Base):
+    __tablename__ = "dbf_driver_feature"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scenario_id: Mapped[str] = mapped_column(String, index=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    customer_id: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    feature_count: Mapped[float] = mapped_column(Float, default=0.0)
+    feature_type: Mapped[str] = mapped_column(String, default="none")
+    media_spend: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class DbfDriverElasticity(Base):
+    __tablename__ = "dbf_driver_elasticity"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    customer_id: Mapped[str] = mapped_column(String, index=True)
+    driver_name: Mapped[str] = mapped_column(String, index=True)  # price | acv | display | feature
+    elasticity_coef: Mapped[float] = mapped_column(Float, default=0.0)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class DbfConsumptionForecast(Base):
+    __tablename__ = "dbf_consumption_forecast"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scenario_id: Mapped[str] = mapped_column(String, index=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    customer_id: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    base_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    price_effect: Mapped[float] = mapped_column(Float, default=0.0)
+    acv_effect: Mapped[float] = mapped_column(Float, default=0.0)
+    display_effect: Mapped[float] = mapped_column(Float, default=0.0)
+    feature_effect: Mapped[float] = mapped_column(Float, default=0.0)
+    total_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    adjustment_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    adjusted_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    last_year_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    last_known_value_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    actual_qty: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class DbfShipmentForecast(Base):
+    __tablename__ = "dbf_shipment_forecast"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scenario_id: Mapped[str] = mapped_column(String, index=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    customer_id: Mapped[str] = mapped_column(String, index=True)
+    location: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    consumption_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    inventory_position: Mapped[float] = mapped_column(Float, default=0.0)
+    shipment_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    regression_residual: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class DbfConsumptionShipmentRegression(Base):
+    __tablename__ = "dbf_consumption_shipment_regression"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sku: Mapped[str] = mapped_column(String, index=True)
+    location: Mapped[str] = mapped_column(String, index=True)
+    alpha: Mapped[float] = mapped_column(Float, default=0.0)
+    beta: Mapped[float] = mapped_column(Float, default=1.0)
+    gamma: Mapped[float] = mapped_column(Float, default=0.0)
+    r_squared: Mapped[float] = mapped_column(Float, default=0.0)
+    training_window: Mapped[str] = mapped_column(String, default="")
+
+
+class DbfAccuracySnapshot(Base):
+    __tablename__ = "dbf_accuracy_snapshot"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scenario_id: Mapped[str] = mapped_column(String, index=True)
+    tier: Mapped[str] = mapped_column(String, index=True)  # driver | consumption | shipment
+    # For tier=driver, entity is the driver name. For consumption/shipment, it's the SKU.
+    entity: Mapped[str] = mapped_column(String, index=True)
+    week_start: Mapped[str] = mapped_column(String, index=True)
+    forecast_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    actual_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    mape: Mapped[float] = mapped_column(Float, default=0.0)
+    bias: Mapped[float] = mapped_column(Float, default=0.0)
+    wmape: Mapped[float] = mapped_column(Float, default=0.0)
 
 
 class PromptActivityLog(Base):

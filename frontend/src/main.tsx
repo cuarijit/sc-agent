@@ -13,12 +13,18 @@ import LoginPage from "./features/auth/LoginPage";
 import UserAdminPage from "./features/adminUsers/UserAdminPage";
 import ModuleConfigPage from "./features/moduleConfig/ModuleConfigPage";
 import BrandingPage from "./features/branding/BrandingPage";
+import DocumentationAdminPage from "./features/documentation/pages/DocumentationAdminPage";
+import HighlightsPage from "./features/customer/pages/HighlightsPage";
+import KeyTakeawaysPage from "./features/customer/pages/KeyTakeawaysPage";
+import ChallengesPage from "./features/customer/pages/ChallengesPage";
 import AgentConfigurationPage from "./pages/AgentConfigurationPage";
 import InventoryDiagnosticConsoleRoute from "./pages/InventoryDiagnosticConsoleRoute";
 import AllocationConsolePage from "./pages/AllocationConsolePage";
 import DemandSensingConsolePage from "./pages/DemandSensingConsolePage";
 import DashboardPage from "./pages/DashboardPage";
 import DemandAnalysisPlaceholderPage from "./pages/DemandAnalysisPlaceholderPage";
+import DbfAnalyticsPage from "./pages/DbfAnalyticsPage";
+import DbfWorkbenchPage from "./pages/DbfWorkbenchPage";
 import DemandForecastingPage from "./pages/DemandForecastingPage";
 import DemandCollaborativePage from "./pages/DemandCollaborativePage";
 import DemandAccuracyPage from "./pages/DemandAccuracyPage";
@@ -326,6 +332,8 @@ function RootApp() {
               <Route path="/demand/financial" element={<RoutedPageShell><DemandFinancialPage /></RoutedPageShell>} />
               <Route path="/demand/analytics" element={<RoutedPageShell><DemandAnalyticsPage /></RoutedPageShell>} />
               <Route path="/demand/customers" element={<RoutedPageShell><DemandCustomersPage /></RoutedPageShell>} />
+              <Route path="/dbf/workbench" element={<RoutedPageShell><DbfWorkbenchPage /></RoutedPageShell>} />
+              <Route path="/dbf/analytics" element={<RoutedPageShell><DbfAnalyticsPage /></RoutedPageShell>} />
               <Route path="/agentic-ai/agent-configuration" element={<AgentConfigurationPage />} />
               <Route
                 path="/agentic-ai/inventory-diagnostic"
@@ -395,6 +403,14 @@ function RootApp() {
                   <BrandingPage />
                 </RequireRole>
               } />
+              <Route path="/agentic-ai/admin/documentation" element={
+                <RequireRole allowedRoles={["admin"]}>
+                  <DocumentationAdminPage />
+                </RequireRole>
+              } />
+              <Route path="/customer/highlights" element={<RoutedPageShell><HighlightsPage /></RoutedPageShell>} />
+              <Route path="/customer/key-takeaways" element={<RoutedPageShell><KeyTakeawaysPage /></RoutedPageShell>} />
+              <Route path="/customer/challenges" element={<RoutedPageShell><ChallengesPage /></RoutedPageShell>} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
               </Route>

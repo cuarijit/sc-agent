@@ -12,11 +12,11 @@ import {
 } from "../../services/brandingAdminApi";
 
 export default function BrandingPage() {
-  const [settings, setSettings] = useState<BrandingSettings>({ company_logo: null, customer_logo: null });
+  const [settings, setSettings] = useState<BrandingSettings>({ company_logo: null, customer_logo: null, tenant_logo: null });
   const [assets, setAssets] = useState<LibraryAsset[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [pickerFor, setPickerFor] = useState<"company_logo" | "customer_logo" | null>(null);
+  const [pickerFor, setPickerFor] = useState<"company_logo" | "customer_logo" | "tenant_logo" | null>(null);
   const [uploading, setUploading] = useState(false);
 
   async function reloadAll() {
@@ -37,7 +37,10 @@ export default function BrandingPage() {
     try {
       const saved = await updateAdminBranding(settings);
       setSettings(saved);
-      setSuccess("Branding saved. Refresh the page to see the new header.");
+      // Notify the TopHeader to refetch /api/branding so the header logos
+      // update in place — no hard refresh required.
+      window.dispatchEvent(new CustomEvent("branding:changed"));
+      setSuccess("Branding saved — header updated.");
     } catch (e) {
       setError((e as Error).message);
     }
@@ -74,16 +77,22 @@ export default function BrandingPage() {
       <SectionCard title="Active logos" subtitle="What appears in the brand strip + login page">
         <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
           <LogoSlot
-            label="Company logo (left of brand strip)"
+            label="Company logo — brand strip LEFT"
             token={settings.company_logo}
             onPick={() => setPickerFor("company_logo")}
             onClear={() => setSettings((p) => ({ ...p, company_logo: null }))}
           />
           <LogoSlot
-            label="Customer / module logo (login illustration + secondary brand)"
+            label="Module / product logo — brand strip LEFT (after divider)"
             token={settings.customer_logo}
             onPick={() => setPickerFor("customer_logo")}
             onClear={() => setSettings((p) => ({ ...p, customer_logo: null }))}
+          />
+          <LogoSlot
+            label="Customer logo — brand strip RIGHT (uploadable per tenant)"
+            token={settings.tenant_logo}
+            onPick={() => setPickerFor("tenant_logo")}
+            onClear={() => setSettings((p) => ({ ...p, tenant_logo: null }))}
           />
         </Stack>
         <Stack direction="row" spacing={1} sx={{ mt: 2 }}>

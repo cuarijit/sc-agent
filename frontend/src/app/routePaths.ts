@@ -23,6 +23,9 @@ export const ROUTE_PATHS = {
   // Legacy placeholders
   demandForecastAlerts: "/demand/forecast-alerts",
   demandForecastModification: "/demand/forecast-modification",
+  // Puls8 DBF module
+  dbfWorkbench: "/dbf/workbench",
+  dbfAnalytics: "/dbf/analytics",
   // Agentic AI module
   agentConfiguration: "/agentic-ai/agent-configuration",
   inventoryDiagnosticConsole: "/agentic-ai/inventory-diagnostic",
@@ -33,6 +36,11 @@ export const ROUTE_PATHS = {
   adminUsers: "/agentic-ai/admin/users",
   adminModules: "/agentic-ai/admin/modules",
   adminBranding: "/agentic-ai/admin/branding",
+  adminDocumentation: "/agentic-ai/admin/documentation",
+  // Customer module
+  customerHighlights: "/customer/highlights",
+  customerKeyTakeaways: "/customer/key-takeaways",
+  customerChallenges: "/customer/challenges",
   // Auth
   login: "/login",
 } as const;

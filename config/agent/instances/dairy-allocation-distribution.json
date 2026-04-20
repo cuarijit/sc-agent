@@ -1,12 +1,12 @@
 {
   "instance_id": "dairy-allocation-distribution",
   "agent_type": "inventory_allocation_agent",
-  "display_name": "Dairy Allocation & Distribution",
-  "description": "Allocate dairy (milk, laban, yogurt, cheese, juice) across stores by velocity × RSL; reroute Iftar-window deliveries; minimize waste via markdown / transfer / donate cascade.",
+  "display_name": "UND \u2014 Dairy Allocation & Distribution",
+  "description": "United National Dairy (KSA) allocation across stores by velocity \u00d7 RSL; reroute Iftar-window deliveries; minimise waste via markdown / transfer / donate cascade.",
   "icon": "LocalShippingOutlined",
-  "button_text": "Dairy Allocation & Distribution",
+  "button_text": "UND \u2014 Dairy Allocation & Distribution",
   "button_style": "icon_and_text",
-  "tooltip_text": "Focus: Iftar-window routing, fair-share allocation, and waste minimization for perishable dairy.",
+  "tooltip_text": "UND Iftar-window routing, fair-share allocation, and waste minimisation for perishable dairy.",
   "module_slug": "agentic-ai",
   "is_active": true,
   "type_specific_config": {
@@ -65,29 +65,13 @@
       "execute": ["create_task", "create_recommendation_record", "export_action_csv"]
     },
     "ui_prompts": {
-      "show": [
-        {"id": "show_iftar_risk", "label": "Iftar delivery risk", "text": "Which deliveries today are at risk of missing their Iftar window?"},
-        {"id": "show_expiring_24h", "label": "Expiring in 24h", "text": "Which batches will expire in the next 24 hours across the network?"},
-        {"id": "show_yogurt_alloc", "label": "Yogurt velocity vs alloc", "text": "Show store-level velocity vs planned allocation for YOGURT-FRUIT-4P today."},
-        {"id": "show_routes_today", "label": "Today's routes", "text": "Show today's delivery routes with their planned stops and ETAs."}
+      "solve": [
+        {"id": "solve_network_scan", "label": "\ud83d\udd2d Network \u2014 scan all", "text": "Across today's dairy delivery routes, find the route + SKU combination with the largest gap between fair-share and on-hand, explain why, and rebalance it before iftar."},
+        {"id": "solve_yogurt_sku", "label": "SKU \u2014 YOGURT-FRUIT-4P", "text": "Re-balance YOGURT-FRUIT-4P across the network: where is it over- and under-allocated, and what's the value-optimal redistribution plan before the batch RSL drops below 2 days?"},
+        {"id": "solve_laban_route_east", "label": "SKU \u00d7 Route \u2014 LABAN on ROUTE-DAIRY-03 to STORE-EAST", "text": "LABAN-500ML on ROUTE-DAIRY-03 to STORE-EAST is at risk of missing the iftar window \u2014 give me the concrete reroute or sibling-transfer action that closes the gap."}
       ],
       "analyse": [
-        {"id": "analyse_fairshare", "label": "Fair-share deviation", "text": "Where is allocation deviating from fair-share based on current velocity and RSL?"},
-        {"id": "analyse_waste_48h", "label": "Predicted waste 48h", "text": "How much predicted waste is on the books for the next 48 hours, and where?"},
-        {"id": "analyse_iftar_pattern", "label": "Iftar tight routes", "text": "Which routes are chronically tight vs the Iftar window this Ramadan?"},
-        {"id": "analyse_cdc2_yogurt", "label": "Why slow at CDC-02?", "text": "Why is YOGURT-FRUIT-4P slow-moving at CDC-DAIRY-02 — what's the allocation fix?"}
-      ],
-      "solve": [
-        {"id": "solve_waste_1d", "label": "Plan for ≤1d RSL", "text": "Propose a markdown, transfer, or donation plan for all batches with RSL ≤ 1 day."},
-        {"id": "solve_ramadan_juice", "label": "Allocate juice Day 18", "text": "Ramadan Day 18 — allocate 4 pallets of JUICE-MANGO-1L across the 8 stores."},
-        {"id": "solve_reroute_iftar", "label": "Reroute to save Iftar", "text": "Re-route today's Iftar-window deliveries so no store misses its window."},
-        {"id": "solve_feta_cdc", "label": "Fix feta at CDC-01", "text": "What should I do with the CHEESE-FETA-400G batch at CDC-DAIRY-01 expiring tomorrow?"}
-      ],
-      "simulate": [
-        {"id": "sim_markdown_25", "label": "25% markdown on aged", "text": "If I apply a 25% markdown on aged CHEESE-FETA-400G at CDC-DAIRY-01, how much waste is avoided?"},
-        {"id": "sim_east_velocity", "label": "STORE-EAST velocity 2×", "text": "If STORE-EAST velocity doubles for 3 hours, re-allocate YOGURT-FRUIT-4P — what changes?"},
-        {"id": "sim_route3_delay", "label": "ROUTE-03 delayed 45m", "text": "If ROUTE-DAIRY-03 is delayed 45 min, which stops must be swapped to keep the Iftar window?"},
-        {"id": "sim_redirect_yogurt", "label": "Redirect aged yogurt", "text": "If I redirect aged YOGURT-FRUIT-4P from CDC-DAIRY-02 to STORE-MALL-01, how much waste drops?"}
+        {"id": "analyse_milk_sku", "label": "SKU \u2014 MILK-FULL-1L", "text": "Analyse MILK-FULL-1L allocation across today's routes: which stores have the largest fair-share deviation, what's the root cause, and what does it cost to keep going as-is?"}
       ]
     }
   }
