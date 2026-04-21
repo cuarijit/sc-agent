@@ -1363,11 +1363,15 @@ def _upsert_ramadan_calendar(db: Session) -> None:
 def _upsert_delivery_routes(db: Session) -> None:
     """Seed today's delivery routes covering all 6 stores + 2 CDCs. Route-03 is
     deliberately tight against Iftar (ETA 18:15 vs iftar 18:05) → triggers
-    iftar_window_miss_risk. Route-05 has slack capacity usable for swap."""
+    iftar_window_miss_risk. Route-05 has slack capacity usable for swap.
+
+    Idempotent: delete by route_id (not by date) so the fixture can re-run
+    across day boundaries without PK collisions on `ROUTE-DAIRY-*`.
+    """
     today_iso = date.today().isoformat()
-    db.query(DeliveryRoute).filter(DeliveryRoute.scheduled_date == today_iso).delete(
-        synchronize_session=False
-    )
+    db.query(DeliveryRoute).filter(
+        DeliveryRoute.route_id.like("ROUTE-DAIRY-%"),
+    ).delete(synchronize_session=False)
     routes = [
         {
             "route_id": "ROUTE-DAIRY-01",
